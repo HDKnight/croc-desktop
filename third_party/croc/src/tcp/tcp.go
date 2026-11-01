@@ -9,11 +9,13 @@ import (
 	"io"
 	"net"
 	"slices"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
 
 	log "github.com/schollz/croc/v11/src/logger"
+	"github.com/schollz/croc/v11/src/models"
 	"github.com/schollz/pake/v3"
 
 	"github.com/schollz/croc/v11/src/comm"
@@ -53,10 +55,11 @@ type server struct {
 }
 
 type roomInfo struct {
-	first  *comm.Comm
-	second *comm.Comm
-	opened time.Time
-	full   bool
+	first       *comm.Comm
+	second      *comm.Comm
+	opened      time.Time
+	full        bool
+	senderOwned bool
 }
 
 type roomMap struct {
@@ -71,12 +74,16 @@ type roomAdmission struct {
 	evicted           bool
 	evictedRoom       string
 	evictedConnection *comm.Comm
+	rejected          bool
 }
 
 type handshakeResult struct {
 	room                   string
 	strongKeyForEncryption []byte
 	fast                   bool
+	// guest authenticated with the public default password. It may join a
+	// room the sender already opened, and may not create one.
+	guest bool
 }
 
 const pingRoom = "pinglkasjdlfjsaldjf"
@@ -104,7 +111,7 @@ func newDefaultServer() *server {
 // admitToRoom atomically creates a waiting room, joins an existing waiting
 // room, or reports that an existing room is already full. When creating a room
 // at capacity, it removes the oldest waiting room before inserting the new one.
-func (s *server) admitToRoom(room string, c *comm.Comm) roomAdmission {
+func (s *server) admitToRoom(room string, c *comm.Comm, senderOwned bool) roomAdmission {
 	s.rooms.Lock()
 	defer s.rooms.Unlock()
 
@@ -117,6 +124,9 @@ func (s *server) admitToRoom(room string, c *comm.Comm) roomAdmission {
 		roomData.full = true
 		s.rooms.rooms[room] = roomData
 		return roomAdmission{otherConnection: roomData.first}
+	}
+	if !senderOwned && !s.guestMayCreateLocked(room) {
+		return roomAdmission{rejected: true}
 	}
 
 	waitingRooms := 0
@@ -143,10 +153,57 @@ func (s *server) admitToRoom(room string, c *comm.Comm) roomAdmission {
 		result.evictedConnection = oldestRoomData.first
 	}
 	s.rooms.rooms[room] = roomInfo{
-		first:  c,
-		opened: time.Now(),
+		first:       c,
+		opened:      time.Now(),
+		senderOwned: senderOwned,
 	}
 	return result
+}
+
+// guestMayCreateLocked allows the default password to open a data channel
+// only after the sender has admitted the receiver on the control room.
+// The rooms lock is held by the caller.
+func (s *server) guestMayCreateLocked(room string) bool {
+	dash := strings.LastIndex(room, "-")
+	if dash <= 0 || dash >= len(room)-1 {
+		return false
+	}
+	parent := room[:dash]
+	if len(parent) != 64 {
+		return false
+	}
+	for _, r := range parent {
+		if (r < '0' || r > '9') && (r < 'a' || r > 'f') {
+			return false
+		}
+	}
+	index, err := strconv.Atoi(room[dash+1:])
+	if err != nil || index < 0 || index > 7 {
+		return false
+	}
+	parentRoom, ok := s.rooms.rooms[parent]
+	return ok && parentRoom.senderOwned && parentRoom.full
+}
+
+const (
+	relayPasswordRejected = iota
+	relayPasswordSender
+	relayPasswordGuest
+)
+
+// classifyRelayPassword accepts the configured sender password for every
+// room operation. When that password is not the public default, the default
+// password may only join a room the sender already opened.
+func classifyRelayPassword(configured, got string) int {
+	configured = strings.TrimSpace(configured)
+	got = strings.TrimSpace(got)
+	if got == configured {
+		return relayPasswordSender
+	}
+	if configured != models.DEFAULT_PASSPHRASE && got == models.DEFAULT_PASSPHRASE {
+		return relayPasswordGuest
+	}
+	return relayPasswordRejected
 }
 
 // RunWithOptionsAsync asynchronously starts a TCP listener.
@@ -485,7 +542,11 @@ func (s *server) clientHandshake(c *comm.Comm, deadline, firstMessageDeadline ti
 	if err != nil {
 		return
 	}
-	if strings.TrimSpace(string(passwordBytes)) != strings.TrimSpace(s.password) {
+	switch classifyRelayPassword(s.password, string(passwordBytes)) {
+	case relayPasswordSender:
+	case relayPasswordGuest:
+		result.guest = true
+	default:
 		passwordErr := fmt.Errorf("bad password")
 		enc, encryptErr := crypt.Encrypt([]byte(passwordErr.Error()), strongKeyForEncryption)
 		if encryptErr != nil {
@@ -530,7 +591,7 @@ func (s *server) clientHandshake(c *comm.Comm, deadline, firstMessageDeadline ti
 	}
 	log.Debugf("sending '%s'", banner)
 	response := banner + "|||" + c.Connection().RemoteAddr().String()
-	if result.room != "" && s.fastAdmission != nil && s.banner != "" {
+	if result.room != "" && !result.guest && s.fastAdmission != nil && s.banner != "" {
 		if capability, issueErr := s.fastAdmission.issue(canonicalSource(c.Connection().RemoteAddr()), result.room); issueErr == nil {
 			response += "|||" + capability
 		}
@@ -585,7 +646,14 @@ func (s *server) clientCommunication(c *comm.Comm, handshake handshakeResult) (r
 		return room, ErrAdmissionLimited
 	}
 
-	admission := s.admitToRoom(room, c)
+	admission := s.admitToRoom(room, c, !handshake.guest)
+	if admission.rejected {
+		err = sendAdmission("bad password")
+		if err != nil {
+			return room, err
+		}
+		return room, fmt.Errorf("bad password")
+	}
 	if admission.evicted {
 		log.Debug("evicting oldest waiting room at capacity")
 		if admission.evictedConnection != nil {

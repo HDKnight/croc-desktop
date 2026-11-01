@@ -116,6 +116,7 @@
   "settings.relaySection": "Relay-Server",
   "settings.relayV4": "Relay-Adresse (IPv4)",
   "settings.relayV6": "Relay-Adresse (IPv6)",
+  "settings.relayV6Ignored": "Ein eigenes IPv4-Relay ist gesetzt, die IPv6-Adresse wird nicht verwendet.",
   "settings.save": "Einstellungen speichern",
   "settings.saved": "Gespeichert!",
   "settings.socks5": "SOCKS5-Proxy",
@@ -131,10 +132,13 @@
   "status.cancelled": "Übertragung abgebrochen.",
   "status.complete": "Übertragung abgeschlossen.",
   "status.connecting": "Verbinde…",
+  "status.hashing": "Datei wird geprüft…",
   "status.stall": "Noch in Arbeit — große Dateien können einen Moment dauern.",
   "status.stallVerifying": "Noch in Arbeit — Daten werden geprüft…",
   "status.transferring": "Übertrage…",
   "status.verifying": "Prüfe…",
+  "status.viaDirect": "Direktverbindung",
+  "status.viaRelay": "Über das Relay",
   "status.waitingReceive": "Warte auf den Sender…",
   "status.waitingSend": "Warte auf Empfänger — Code teilen"
 }

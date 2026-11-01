@@ -44,7 +44,12 @@ func (c *Client) preflightReceiveFile(index int) (receiveDecision, error) {
 	}
 	matches := false
 	if exists && file.Size > 0 && file.Symlink == "" && stat.Mode().IsRegular() && stat.Size() == file.Size {
-		hash, err := receiveFileHash(c.clientContext(), destination, c.Options.HashAlgorithm, !c.Options.SendingText)
+		var hash []byte
+		if c.hooks != nil {
+			hash, err = c.hashForTransfer(destination, c.Options.HashAlgorithm, false)
+		} else {
+			hash, err = receiveFileHash(c.clientContext(), destination, c.Options.HashAlgorithm, !c.Options.SendingText)
+		}
 		if err != nil {
 			return receiveDecision{}, fmt.Errorf("hash existing destination %q: %w", destination, err)
 		}

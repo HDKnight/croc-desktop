@@ -202,6 +202,7 @@ bottom-tab layout without a phone.
 - **Send again** — re-send the same files or text without re-picking.
 - **Settings** — theme (light / dark / system), language, custom relays, proxies, and more.
 - **Relay** — optionally host a relay from the app for locked-down networks.
+- **Private relay** — keep the relay password on the sender only. See [自建中继操作说明](docs/自建中继.md).
 
 ## croc engine compatibility
 

@@ -7,12 +7,20 @@ export default function CodeDisplay({ code }: { code: string }) {
   const [qr, setQr] = useState<string>("");
   const [copied, setCopied] = useState(false);
   const [copiedCmd, setCopiedCmd] = useState(false);
+  const [command, setCommand] = useState("");
 
   useEffect(() => {
     let alive = true;
     Backend.GetQrPng(code).then((b64) => {
       if (alive) setQr(b64);
     });
+    const windows = /Windows/i.test(navigator.userAgent);
+    Backend.ShareCommand(code)
+      .then((cmd) => {
+        if (!alive || !cmd) return;
+        setCommand(windows ? cmd.windows : cmd.unix);
+      })
+      .catch(() => {});
     return () => {
       alive = false;
     };
@@ -28,10 +36,10 @@ export default function CodeDisplay({ code }: { code: string }) {
   // positional code; Windows still accepts positional codes.
   const copyCommand = async () => {
     const quoted = "'" + code.replace(/'/g, "'\\''") + "'";
-    const command = /Windows/i.test(navigator.userAgent)
+    const fallback = /Windows/i.test(navigator.userAgent)
       ? `croc ${code}`
       : `CROC_SECRET=${quoted} croc`;
-    await copyToClipboard(command);
+    await copyToClipboard(command || fallback);
     setCopiedCmd(true);
     setTimeout(() => setCopiedCmd(false), 1500);
   };

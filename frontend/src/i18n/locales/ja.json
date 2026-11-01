@@ -116,6 +116,7 @@
   "settings.relaySection": "リレーサーバー",
   "settings.relayV4": "リレーアドレス（IPv4）",
   "settings.relayV6": "リレーアドレス（IPv6）",
+  "settings.relayV6Ignored": "カスタム IPv4 リレーが設定されているため、IPv6 アドレスは使われません。",
   "settings.save": "設定を保存",
   "settings.saved": "保存しました！",
   "settings.socks5": "SOCKS5 プロキシ",
@@ -131,10 +132,13 @@
   "status.cancelled": "転送はキャンセルされました。",
   "status.complete": "転送が完了しました。",
   "status.connecting": "接続中…",
+  "status.hashing": "ファイルを検証しています…",
   "status.stall": "処理中です — 大きなファイルは時間がかかります。",
   "status.stallVerifying": "処理中です — データを検証しています…",
   "status.transferring": "転送中…",
   "status.verifying": "検証中…",
+  "status.viaDirect": "ピアツーピア",
+  "status.viaRelay": "リレー経由",
   "status.waitingReceive": "送信者を待っています…",
   "status.waitingSend": "受信者を待っています — コードを共有してください"
 }

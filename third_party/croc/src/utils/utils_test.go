@@ -23,6 +23,7 @@ import (
 
 	"github.com/schollz/croc/v11/src/codephrase"
 	"github.com/schollz/croc/v11/src/receivefs"
+	"github.com/schollz/progressbar/v3"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -126,6 +127,53 @@ func TestShowHashProgressRequiresTerminal(t *testing.T) {
 
 	if showHashProgress(true, minHashProgressSize) {
 		t.Fatal("hash progress must stay off when stderr is not a console")
+	}
+}
+
+type rejectWriter struct{}
+
+func (rejectWriter) Write([]byte) (int, error) {
+	return 0, errors.New("write /dev/stderr: The handle is invalid")
+}
+
+func TestXXHashReaderIgnoresProgressWriteFailure(t *testing.T) {
+	payload := bytes.Repeat([]byte("abc"), 4096)
+	bar := progressbar.NewOptions64(int64(len(payload)), progressbar.OptionSetWriter(rejectWriter{}))
+	sum, err := XXHashReader(io.NewSectionReader(bytes.NewReader(payload), 0, int64(len(payload))), bar)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(sum) == 0 {
+		t.Fatal("empty hash")
+	}
+}
+
+func TestHashFileCtxReportsProgress(t *testing.T) {
+	dir := t.TempDir()
+	name := filepath.Join(dir, "payload.bin")
+	payload := bytes.Repeat([]byte("abc"), 4096)
+	if err := os.WriteFile(name, payload, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	var lastDone, lastTotal int64
+	var calls int
+	ctx := WithHashProgress(context.Background(), func(done, total int64) {
+		calls++
+		lastDone, lastTotal = done, total
+	})
+	sum, err := HashFileCtx(ctx, name, "xxhash", true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	plain, err := HashFileCtx(context.Background(), name, "xxhash", false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(sum, plain) {
+		t.Fatal("progress hash mismatch")
+	}
+	if calls < 2 || lastDone != int64(len(payload)) || lastTotal != int64(len(payload)) {
+		t.Fatalf("progress calls=%d done=%d total=%d", calls, lastDone, lastTotal)
 	}
 }
 

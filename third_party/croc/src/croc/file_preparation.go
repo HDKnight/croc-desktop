@@ -63,7 +63,7 @@ func (c *Client) prepareFile(index int, algorithm string, scratch *filePreparati
 			scratch.compressionOutput,
 		)
 	}
-	hash, err := c.stop.hash(fullPath, algorithm, fileInfo.Size > 1e7)
+	hash, err := c.hashForTransfer(fullPath, algorithm, c.hooks == nil && fileInfo.Size > 1e7)
 	if err != nil {
 		return err
 	}

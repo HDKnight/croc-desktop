@@ -7,7 +7,6 @@ import (
 	"fmt"
 
 	"github.com/schollz/croc/v11/src/message"
-	"github.com/schollz/croc/v11/src/utils"
 )
 
 const (
@@ -78,7 +77,7 @@ func (c *Client) beginExactHash(index int, filename string) error {
 		c.clearExactHashPending(index)
 		return err
 	}
-	hash, err := utils.HashFileCtx(c.stop.ctx, filename, defaultHashAlgorithm, !c.Options.SendingText)
+	hash, err := c.hashForTransfer(filename, defaultHashAlgorithm, c.hooks == nil && !c.Options.SendingText)
 	if err != nil {
 		c.clearExactHashPending(index)
 		return err
@@ -123,7 +122,7 @@ func (c *Client) processExactHashRequest(m message.Message) error {
 		return err
 	}
 	filename := sourceFilePath(c.FilesToTransfer[index])
-	hash, err := c.stop.hash(filename, defaultHashAlgorithm, c.FilesToTransfer[index].Size > 1e7)
+	hash, err := c.hashForTransfer(filename, defaultHashAlgorithm, c.hooks == nil && c.FilesToTransfer[index].Size > 1e7)
 	if err != nil {
 		return err
 	}

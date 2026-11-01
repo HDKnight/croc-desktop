@@ -258,7 +258,7 @@ func HighwayHashFile(fname string, doShowProgress bool) (hashHighway []byte, err
 		stat, _ := f.Stat()
 		bar := newFileProgress("Hashing", fname, stat.Size())
 		defer clearUnfinishedProgress(bar)
-		if _, err = io.Copy(io.MultiWriter(h, bar), f); err != nil {
+		if err = copyWithOptionalProgress(h, bar, f); err != nil {
 			return
 		}
 	} else {
@@ -284,7 +284,7 @@ func MD5HashFile(fname string, doShowProgress bool) (hash256 []byte, err error) 
 		stat, _ := f.Stat()
 		bar := newFileProgress("Hashing", fname, stat.Size())
 		defer clearUnfinishedProgress(bar)
-		if _, err = io.Copy(io.MultiWriter(h, bar), f); err != nil {
+		if err = copyWithOptionalProgress(h, bar, f); err != nil {
 			return
 		}
 	} else {
@@ -341,7 +341,7 @@ func XXHashFile(fname string, doShowProgress bool) (hash256 []byte, err error) {
 		stat, _ := f.Stat()
 		bar := newFileProgress("Hashing", fname, stat.Size())
 		defer clearUnfinishedProgress(bar)
-		if _, err = io.Copy(io.MultiWriter(h, bar), f); err != nil {
+		if err = copyWithOptionalProgress(h, bar, f); err != nil {
 			return
 		}
 	} else {

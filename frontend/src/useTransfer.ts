@@ -61,10 +61,31 @@ export function useTransfer(): TransferModel {
   useEffect(() => {
     const offs = [
       onEvent<TransferStateName>("transfer:state", (state) =>
-        setT((p) => ({ ...p, phase: state }))
+        setT((p) => {
+          // A finished hash restores "waiting"/"connecting". Ignore that if
+          // file bytes are already moving.
+          if (
+            (state === "waiting" || state === "connecting") &&
+            p.phase === "transferring"
+          ) {
+            return p;
+          }
+          return { ...p, phase: state };
+        })
       ),
       onEvent<ProgressPayload>("transfer:progress", (progress) =>
-        setT((p) => ({ ...p, progress, lastProgressAt: Date.now(), phase: "transferring" }))
+        setT((p) => {
+          const hashing =
+            p.phase === "hashing" ||
+            (progress.filesTotal === 0 &&
+              (p.phase === "connecting" || p.phase === "waiting"));
+          return {
+            ...p,
+            progress,
+            lastProgressAt: Date.now(),
+            phase: hashing ? "hashing" : "transferring",
+          };
+        })
       ),
       onEvent<AcceptPayload>("transfer:accept", (accept) => setT((p) => ({ ...p, accept }))),
       onEvent<OverwritePayload>("transfer:overwrite", (overwrite) =>
@@ -84,7 +105,11 @@ export function useTransfer(): TransferModel {
       // synchronously with the start call, and over the server-mode HTTP+WS
       // transport that event can land before the call's promise resolves.
       // Don't regress an already-live phase back to "connecting".
-      const live = p.phase === "connecting" || p.phase === "waiting" || p.phase === "transferring";
+      const live =
+        p.phase === "connecting" ||
+        p.phase === "waiting" ||
+        p.phase === "hashing" ||
+        p.phase === "transferring";
       return { ...initial, direction, code, phase: live ? p.phase : "connecting" };
     });
   }, []);

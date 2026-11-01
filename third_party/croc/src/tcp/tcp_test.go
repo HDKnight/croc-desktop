@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"net"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -185,7 +186,7 @@ func TestAdmitToRoomEvictsOldestWaitingRoom(t *testing.T) {
 		},
 	}
 
-	result := s.admitToRoom("incoming", nil)
+	result := s.admitToRoom("incoming", nil, true)
 
 	assert.True(t, result.created)
 	assert.True(t, result.evicted)
@@ -205,19 +206,19 @@ func TestAdmitToRoomJoinsAtCapacityAndExcludesFullRooms(t *testing.T) {
 		},
 	}
 
-	joined := s.admitToRoom("joining", nil)
+	joined := s.admitToRoom("joining", nil, true)
 	assert.False(t, joined.created)
 	assert.False(t, joined.full)
 	assert.False(t, joined.evicted)
 	assert.True(t, s.rooms.rooms["joining"].full)
 
-	created := s.admitToRoom("waiting", nil)
+	created := s.admitToRoom("waiting", nil, true)
 	assert.True(t, created.created)
 	assert.False(t, created.evicted)
 	assert.Contains(t, s.rooms.rooms, "joining")
 	assert.Contains(t, s.rooms.rooms, "waiting")
 
-	evicted := s.admitToRoom("replacement", nil)
+	evicted := s.admitToRoom("replacement", nil, true)
 	assert.True(t, evicted.evicted)
 	assert.Equal(t, "waiting", evicted.evictedRoom)
 	assert.Contains(t, s.rooms.rooms, "joining")
@@ -238,7 +239,7 @@ func TestConcurrentRoomAdmissionRespectsWaitingRoomLimit(t *testing.T) {
 		go func(room int) {
 			defer wg.Done()
 			<-start
-			s.admitToRoom(fmt.Sprintf("room-%d", room), nil)
+			s.admitToRoom(fmt.Sprintf("room-%d", room), nil, true)
 		}(i)
 	}
 	close(start)
@@ -712,6 +713,41 @@ func TestWrongPassword(t *testing.T) {
 	assert.Contains(t, err.Error(), "bad password")
 	assert.NotContains(t, err.Error(), "wrongpass")
 	assert.NotContains(t, err.Error(), "testRoom")
+}
+
+func TestGuestPasswordJoinsSenderRoomOnly(t *testing.T) {
+	log.SetLevel("error")
+	go Run("debug", "127.0.0.1", "8411", "secret", "8412")
+	time.Sleep(100 * time.Millisecond)
+
+	room := strings.Repeat("ab", 32)
+	_, _, _, err := ConnectToTCPServer("127.0.0.1:8411", "pass123", room)
+	if err == nil {
+		t.Fatal("default password created a room")
+	}
+
+	sender, _, _, err := ConnectToTCPServer("127.0.0.1:8411", "secret", room)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer sender.Close()
+
+	guest, _, _, err := ConnectToTCPServer("127.0.0.1:8411", "pass123", room)
+	if err != nil {
+		t.Fatalf("guest join: %v", err)
+	}
+	defer guest.Close()
+
+	dataGuest, _, _, err := ConnectToTCPServer("127.0.0.1:8411", "pass123", room+"-0")
+	if err != nil {
+		t.Fatalf("guest data channel: %v", err)
+	}
+	defer dataGuest.Close()
+	dataSender, _, _, err := ConnectToTCPServer("127.0.0.1:8411", "secret", room+"-0")
+	if err != nil {
+		t.Fatalf("sender data channel: %v", err)
+	}
+	defer dataSender.Close()
 }
 
 // A relay password with trailing whitespace should still accept a trimmed client password.

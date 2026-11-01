@@ -56,8 +56,25 @@ export default function SettingsView() {
     }
   };
 
-  const relaySummary =
-    [s.relayAddress, s.relayAddress6].filter((x) => x && x.trim()).join(" · ") || "—";
+  const v4 = s.relayAddress?.trim() ?? "";
+  const v6 = s.relayAddress6?.trim() ?? "";
+  const defaultV4 = info?.defaultRelay ?? "";
+  const defaultV6 = info?.defaultRelay6 ?? "";
+  const customV4 = Boolean(defaultV4) && v4 !== "" && v4 !== defaultV4;
+  const customV6 = Boolean(defaultV6) && v6 !== "" && v6 !== defaultV6;
+  let activeRelays: string[] = [];
+  let v6Ignored = false;
+  if (!info) {
+    activeRelays = [v4, v6].filter(Boolean);
+  } else if (customV4) {
+    activeRelays = [v4];
+    v6Ignored = v6 !== "";
+  } else if (customV6 && (v4 === "" || v4 === defaultV4)) {
+    activeRelays = [v6];
+  } else {
+    activeRelays = [v4, v6].filter(Boolean);
+  }
+  const relaySummary = activeRelays.join(" · ") || "—";
 
   return (
     <div className="view">
@@ -83,14 +100,16 @@ export default function SettingsView() {
           <div className="settings-meta-row">
             <dt>{t("settings.relayActive")}</dt>
             <dd className="settings-meta-relay" title={relaySummary}>
-              {s.relayAddress?.trim() ? (
-                <code>{s.relayAddress.trim()}</code>
-              ) : (
+              {activeRelays.length === 0 ? (
                 <span className="hint">—</span>
+              ) : (
+                activeRelays.map((addr, i) => (
+                  <code key={addr} className={i === 0 ? undefined : "settings-meta-relay6"}>
+                    {addr}
+                  </code>
+                ))
               )}
-              {s.relayAddress6?.trim() ? (
-                <code className="settings-meta-relay6">{s.relayAddress6.trim()}</code>
-              ) : null}
+              {v6Ignored ? <span className="hint">{t("settings.relayV6Ignored")}</span> : null}
             </dd>
           </div>
           {info?.defaultRelay ? (

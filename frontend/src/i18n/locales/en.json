@@ -116,6 +116,7 @@
   "settings.relaySection": "Relay server",
   "settings.relayV4": "Relay address (IPv4)",
   "settings.relayV6": "Relay address (IPv6)",
+  "settings.relayV6Ignored": "A custom IPv4 relay is set, so the IPv6 address is not used.",
   "settings.save": "Save settings",
   "settings.saved": "Saved!",
   "settings.socks5": "SOCKS5 proxy",
@@ -131,10 +132,13 @@
   "status.cancelled": "Transfer cancelled.",
   "status.complete": "Transfer complete.",
   "status.connecting": "Connecting…",
+  "status.hashing": "Checking the file…",
   "status.stall": "Still working — large files can take a moment.",
   "status.stallVerifying": "Still working — verifying data…",
   "status.transferring": "Transferring…",
   "status.verifying": "Verifying…",
+  "status.viaDirect": "Peer-to-peer",
+  "status.viaRelay": "Through the relay",
   "status.waitingReceive": "Waiting for the sender…",
   "status.waitingSend": "Waiting for recipient — share the code"
 }

@@ -176,6 +176,35 @@ export class Settings {
     }
 }
 
+/**
+ * ShareCommand is the shell command a peer can paste to receive this code
+ * with the relay settings that will actually be used.
+ */
+export class ShareCommand {
+    "windows": string;
+    "unix": string;
+
+    /** Creates a new ShareCommand instance. */
+    constructor($$source: Partial<ShareCommand> = {}) {
+        if (!("windows" in $$source)) {
+            this["windows"] = "";
+        }
+        if (!("unix" in $$source)) {
+            this["unix"] = "";
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new ShareCommand instance from a string or object.
+     */
+    static createFrom($$source: any = {}): ShareCommand {
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        return new ShareCommand($$parsedSource as Partial<ShareCommand>);
+    }
+}
+
 export class historyFile {
     "name": string;
 

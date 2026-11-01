@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -180,4 +181,50 @@ func buildCrocOptions(s Settings, isSender bool) croc.Options {
 		opts.RelayAddress = ""
 	}
 	return opts
+}
+
+// ShareCommand is the shell command a peer can paste to receive this code
+// with the relay settings that will actually be used.
+type ShareCommand struct {
+	Windows string `json:"windows"`
+	Unix    string `json:"unix"`
+}
+
+func quoteCLIArg(s string) string {
+	if s == "" {
+		return `""`
+	}
+	if strings.ContainsAny(s, " \t\"'`$") {
+		return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'"
+	}
+	return s
+}
+
+// formatShareCommand builds the receive command for the effective relay.
+// A custom IPv4 relay suppresses IPv6, matching buildCrocOptions.
+func formatShareCommand(s Settings, code string) ShareCommand {
+	opts := buildCrocOptions(s, true)
+	var args []string
+	if opts.OnlyLocal {
+		args = append(args, "--local")
+	} else if opts.RelayAddress != "" && opts.RelayAddress != models.DEFAULT_RELAY {
+		args = append(args, "--relay", quoteCLIArg(opts.RelayAddress))
+	} else if opts.RelayAddress6 != "" && opts.RelayAddress6 != models.DEFAULT_RELAY6 {
+		args = append(args, "--relay6", quoteCLIArg(opts.RelayAddress6))
+	}
+	if opts.DisableLocal && !opts.OnlyLocal {
+		args = append(args, "--no-local")
+	}
+	// The relay password stays on the sender. A patched relay accepts the
+	// public default password from someone joining an open room, so the
+	// copied command does not reveal the sender key.
+	code = strings.TrimSpace(code)
+	flags := strings.Join(args, " ")
+	windows := strings.TrimSpace(strings.TrimSpace("croc "+flags) + " " + code)
+	unixFlags := strings.TrimSpace(flags)
+	unix := fmt.Sprintf("CROC_SECRET=%s croc", quoteCLIArg(code))
+	if unixFlags != "" {
+		unix += " " + unixFlags
+	}
+	return ShareCommand{Windows: windows, Unix: unix}
 }

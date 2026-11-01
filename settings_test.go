@@ -152,3 +152,57 @@ func TestValidThrottle(t *testing.T) {
 		}
 	}
 }
+
+func TestFormatShareCommand(t *testing.T) {
+	code := "dig-park-icon"
+	def := formatShareCommand(Settings{
+		RelayAddress:  models.DEFAULT_RELAY,
+		RelayAddress6: models.DEFAULT_RELAY6,
+		RelayPassword: models.DEFAULT_PASSPHRASE,
+	}, code)
+	if def.Windows != "croc "+code {
+		t.Fatalf("default windows: %q", def.Windows)
+	}
+	if def.Unix != "CROC_SECRET="+code+" croc" {
+		t.Fatalf("default unix: %q", def.Unix)
+	}
+
+	custom := formatShareCommand(Settings{
+		RelayAddress:  "47.109.201.184:9009",
+		RelayAddress6: "47.109.201.184:9009",
+		RelayPassword: "secret pass",
+		DisableLocal:  true,
+	}, code)
+	wantFlags := "--relay 47.109.201.184:9009 --no-local"
+	if strings.Contains(custom.Windows, "secret") || strings.Contains(custom.Unix, "secret") {
+		t.Fatalf("share command revealed the relay password: %q", custom.Windows)
+	}
+	if custom.Windows != "croc "+wantFlags+" "+code {
+		t.Fatalf("custom windows: %q", custom.Windows)
+	}
+	if custom.Unix != "CROC_SECRET="+code+" croc "+wantFlags {
+		t.Fatalf("custom unix: %q", custom.Unix)
+	}
+	if strings.Contains(custom.Windows, "--relay6") {
+		t.Fatalf("custom IPv4 should drop IPv6: %q", custom.Windows)
+	}
+
+	v6 := formatShareCommand(Settings{
+		RelayAddress:  models.DEFAULT_RELAY,
+		RelayAddress6: "[2001:db8::1]:9009",
+		RelayPassword: models.DEFAULT_PASSPHRASE,
+	}, code)
+	if !strings.Contains(v6.Windows, "--relay6 [2001:db8::1]:9009") || strings.Contains(v6.Windows, "--pass") {
+		t.Fatalf("v6 command: %q", v6.Windows)
+	}
+
+	local := formatShareCommand(Settings{
+		RelayAddress:  "47.109.201.184:9009",
+		RelayPassword: models.DEFAULT_PASSPHRASE,
+		OnlyLocal:     true,
+		DisableLocal:  true,
+	}, code)
+	if local.Windows != "croc --local "+code {
+		t.Fatalf("local flags: %q", local.Windows)
+	}
+}

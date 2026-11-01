@@ -106,7 +106,40 @@
  }
  
  func (c *Client) markSenderRouteReady() {
-@@ -1781,6 +1787,7 @@
+@@ -1653,8 +1659,9 @@
+ // queued immediately after room admission, before the peer's PAKE response.
+ // Always consume the whole reply before reporting an expired discovery budget:
+ // abandoning a read can leave a late reply or partial frame in the connection
+-// that will next be used for compressed transfer messages. An actual read error
+-// makes the connection unusable and must abort the transfer.
++// that will next be used for compressed transfer messages. A deadline is
++// returned to the caller, which keeps the relay. Any other read error can
++// leave a partial frame and must abort the transfer.
+ func receiveControlFrame(conn *comm.Comm) ([]byte, error) {
+ 	started := time.Now()
+ 	budget := started.Add(localProbeResponseTimeout)
+@@ -1673,6 +1680,20 @@
+ 		}
+ 		return data, nil
+ 	}
++}
++
++// isLocalProbeTimeout reports a local-discovery read that hit its deadline
++// before a complete frame arrived. The relay transfer can continue.
++func isLocalProbeTimeout(err error) bool {
++	if err == nil {
++		return false
++	}
++	var netErr net.Error
++	if errors.As(err, &netErr) && netErr.Timeout() {
++		return true
++	}
++	msg := err.Error()
++	return strings.Contains(msg, "i/o timeout") || strings.Contains(msg, "deadline exceeded")
+ }
+ 
+ func isFatalSenderRouteError(err error) bool {
+@@ -1781,6 +1802,7 @@
  
  // Send will send the specified file
  func (c *Client) Send(filesInfo []FileInfo, emptyFoldersToTransfer []FileInfo, totalNumberFolders int) (err error) {
@@ -114,7 +147,7 @@
  	defer func() { err = c.redactError(err) }()
  	go c.stop.done()
  	defer c.stop.Cancel()
-@@ -2011,6 +2018,7 @@
+@@ -2011,6 +2033,7 @@
  
  // Receive will receive a file
  func (c *Client) Receive() (err error) {
@@ -122,7 +155,24 @@
  	defer func() { err = c.redactError(err) }()
  	go c.stop.done()
  	defer c.stop.Cancel()
-@@ -2528,8 +2536,8 @@
+@@ -2166,10 +2189,15 @@
+ 			return
+ 		}()
+ 		if err != nil {
+-			if !errors.Is(err, errLocalProbeExpired) {
++			// A deadline with no complete frame is the same outcome as an
++			// expired probe budget: keep the relay. A partial read can desync
++			// the stream, but aborting here drops a transfer that can still
++			// finish through the relay once the next read clears the deadline.
++			if !errors.Is(err, errLocalProbeExpired) && !isLocalProbeTimeout(err) {
+ 				return fmt.Errorf("local discovery failed: %w", err)
+ 			}
+ 			log.Debug("local discovery exceeded its budget; using relay")
++			err = nil
+ 		}
+ 
+ 		if len(ips) > 1 {
+@@ -2528,8 +2556,8 @@
  	if err != nil {
  		return
  	}
@@ -133,7 +183,7 @@
  		fmt.Fprintln(output, termui.Filename(c.EmptyFoldersToTransfer[i].FolderRemote, colorEnabled))
  	}
  	c.setProgressBar(c.newProgressBar(1, " ", 0))
-@@ -2644,7 +2652,23 @@
+@@ -2644,7 +2672,23 @@
  		fname = "text message"
  		displayName = ""
  	}
@@ -158,7 +208,7 @@
  		output, colorEnabled := termui.Output(os.Stderr)
  		if displayName != "" {
  			fname = quotedFilename(displayName, colorEnabled)
-@@ -2699,6 +2723,18 @@
+@@ -2699,6 +2743,18 @@
  		} else {
  			isEmpty, _ := isEmptyFolder(c.EmptyFoldersToTransfer[i].FolderRemote)
  			if !isEmpty {
@@ -177,7 +227,7 @@
  				log.Debug("asking to overwrite")
  				output, colorEnabled := termui.Output(os.Stderr)
  				fmt.Fprintf(output, "\n%s already has some content in it. \nDo you want to %s it with an empty folder? %s ",
-@@ -3147,7 +3183,16 @@
+@@ -3147,7 +3203,16 @@
  		c.updateLifecycle(func(state *transferLifecycle) { state.RecipientRequested = true })
  		c.markTransferStarted()
  
@@ -195,7 +245,7 @@
  			output, colorEnabled := termui.Output(os.Stderr)
  			fmt.Fprintf(output, "Send to machine '%s'? %s ",
  				remoteFile.MachineID,
-@@ -3549,7 +3594,7 @@
+@@ -3549,7 +3614,7 @@
  		c.FilesToTransferCurrentNum = i
  		c.numberOfTransferredFiles++
  		folder, _ := filepath.Split(file.FolderRemote)
@@ -204,7 +254,7 @@
  			output, color := termui.Output(os.Stderr)
  			fmt.Fprintf(output, "\r%s\n", termui.Filename(folder, color))
  		}
-@@ -3561,6 +3606,9 @@
+@@ -3561,6 +3626,9 @@
  
  func (c *Client) fmtPrintUpdate() {
  	c.finishedNum++
@@ -214,7 +264,7 @@
  	if display := c.progressDisplaySnapshot(); display != nil {
  		display.completeFile(c.finishedNum)
  		return
-@@ -3802,7 +3850,11 @@
+@@ -3802,7 +3870,11 @@
  					attempt.report(closeErr)
  					return
  				}
@@ -227,18 +277,35 @@
  			}
  			log.Debug("sending close-sender")
  			err = message.Send(c.connection(0), c.Key, message.Message{
+--- a/src/croc/file_preparation.go
++++ b/src/croc/file_preparation.go
+@@ -63,7 +63,7 @@
+ 			scratch.compressionOutput,
+ 		)
+ 	}
+-	hash, err := c.stop.hash(fullPath, algorithm, fileInfo.Size > 1e7)
++	hash, err := c.hashForTransfer(fullPath, algorithm, c.hooks == nil && fileInfo.Size > 1e7)
+ 	if err != nil {
+ 		return err
+ 	}
 --- /dev/null
 +++ b/src/croc/hooks.go
-@@ -0,0 +1,87 @@
+@@ -0,0 +1,133 @@
 +package croc
 +
 +import (
++	"os"
 +	"path"
++	"path/filepath"
 +
 +	"github.com/schollz/croc/v11/src/models"
 +	"github.com/schollz/croc/v11/src/utils"
 +	"github.com/schollz/progressbar/v3"
 +)
++
++// Files at least this large get a GUI hashing progress report. Smaller files
++// finish quickly enough that a separate phase would only flicker.
++const guiHashProgressMin int64 = 32 << 20
 +
 +// Hooks bridges an embedded client to a GUI. Install before Send or Receive;
 +// callbacks may run on transfer goroutines. Nil callbacks retain CLI behavior.
@@ -260,6 +327,9 @@
 +	BytesTotal int64  `json:"bytesTotal"`
 +	FilesDone  int    `json:"filesDone"`
 +	FilesTotal int    `json:"filesTotal"`
++	// PeerToPeer is true when file bytes are flowing directly between the two
++	// machines. False means the configured relay is carrying the file.
++	PeerToPeer bool `json:"peerToPeer"`
 +}
 +
 +type AcceptRequest struct {
@@ -300,7 +370,44 @@
 +		return
 +	}
 +	event.BytesDone = int64(bar.State().CurrentBytes)
++	event.PeerToPeer = c.peerToPeerDataPath()
 +	c.hooks.OnProgress(event)
++}
++
++// hashForTransfer hashes filename for a send or receive. Embedded clients
++// report progress instead of drawing a console bar.
++func (c *Client) hashForTransfer(filename, algorithm string, cliProgress bool) ([]byte, error) {
++	ctx := c.clientContext()
++	reported := false
++	if c.hooks != nil && c.hooks.OnProgress != nil {
++		cliProgress = false
++		if info, statErr := os.Stat(filename); statErr == nil && info.Size() >= guiHashProgressMin {
++			reported = true
++			c.emitState("hashing")
++			base := filepath.Base(filename)
++			ctx = utils.WithHashProgress(ctx, func(done, total int64) {
++				if c.hooks == nil || c.hooks.OnProgress == nil {
++					return
++				}
++				c.hooks.OnProgress(ProgressEvent{
++					Filename:   base,
++					BytesDone:  done,
++					BytesTotal: total,
++				})
++			})
++		}
++	}
++	sum, err := utils.HashFileCtx(ctx, filename, algorithm, cliProgress)
++	// Hashing runs before the peer is connected. Return to the waiting or
++	// connecting status unless file bytes have already started moving.
++	if reported && !c.activeTransferStarted() {
++		if c.Options.IsSender {
++			c.emitState("waiting")
++		} else {
++			c.emitState("connecting")
++		}
++	}
++	return sum, err
 +}
 +
 +func (c *Client) askReceiveOverwrite(fileInfo FileInfo, resumable bool) (bool, error) {
@@ -428,6 +535,67 @@
 +		t.Fatalf("resume response = %v, %v; callback=%v", accepted, err, called)
 +	}
 +}
+--- /dev/null
++++ b/src/croc/local_probe_timeout_test.go
+@@ -0,0 +1,30 @@
++package croc
++
++import (
++	"errors"
++	"testing"
++)
++
++type timeoutNetErr struct{ msg string }
++
++func (e timeoutNetErr) Error() string   { return e.msg }
++func (e timeoutNetErr) Timeout() bool   { return true }
++func (e timeoutNetErr) Temporary() bool { return true }
++
++func TestIsLocalProbeTimeout(t *testing.T) {
++	if !isLocalProbeTimeout(timeoutNetErr{msg: "read tcp 198.18.0.1:1->47.109.201.184:9009: i/o timeout"}) {
++		t.Fatal("net timeout should fall back to the relay")
++	}
++	if !isLocalProbeTimeout(errors.New("read tcp: i/o timeout")) {
++		t.Fatal("i/o timeout string should fall back")
++	}
++	if !isLocalProbeTimeout(errors.New("context deadline exceeded")) {
++		t.Fatal("deadline exceeded should fall back")
++	}
++	if isLocalProbeTimeout(errors.New("connection reset by peer")) {
++		t.Fatal("reset must stay fatal")
++	}
++	if isLocalProbeTimeout(nil) {
++		t.Fatal("nil is not a timeout")
++	}
++}
+--- a/src/croc/progressive_hash.go
++++ b/src/croc/progressive_hash.go
+@@ -7,7 +7,6 @@
+ 	"fmt"
+ 
+ 	"github.com/schollz/croc/v11/src/message"
+-	"github.com/schollz/croc/v11/src/utils"
+ )
+ 
+ const (
+@@ -78,7 +77,7 @@
+ 		c.clearExactHashPending(index)
+ 		return err
+ 	}
+-	hash, err := utils.HashFileCtx(c.stop.ctx, filename, defaultHashAlgorithm, !c.Options.SendingText)
++	hash, err := c.hashForTransfer(filename, defaultHashAlgorithm, c.hooks == nil && !c.Options.SendingText)
+ 	if err != nil {
+ 		c.clearExactHashPending(index)
+ 		return err
+@@ -123,7 +122,7 @@
+ 		return err
+ 	}
+ 	filename := sourceFilePath(c.FilesToTransfer[index])
+-	hash, err := c.stop.hash(filename, defaultHashAlgorithm, c.FilesToTransfer[index].Size > 1e7)
++	hash, err := c.hashForTransfer(filename, defaultHashAlgorithm, c.hooks == nil && c.FilesToTransfer[index].Size > 1e7)
+ 	if err != nil {
+ 		return err
+ 	}
 --- a/src/croc/receive_preflight.go
 +++ b/src/croc/receive_preflight.go
 @@ -5,6 +5,7 @@
@@ -438,7 +606,21 @@
  	"strings"
  
  	log "github.com/schollz/croc/v11/src/logger"
-@@ -88,19 +89,24 @@
+@@ -43,7 +44,12 @@
+ 	}
+ 	matches := false
+ 	if exists && file.Size > 0 && file.Symlink == "" && stat.Mode().IsRegular() && stat.Size() == file.Size {
+-		hash, err := receiveFileHash(c.clientContext(), destination, c.Options.HashAlgorithm, !c.Options.SendingText)
++		var hash []byte
++		if c.hooks != nil {
++			hash, err = c.hashForTransfer(destination, c.Options.HashAlgorithm, false)
++		} else {
++			hash, err = receiveFileHash(c.clientContext(), destination, c.Options.HashAlgorithm, !c.Options.SendingText)
++		}
+ 		if err != nil {
+ 			return receiveDecision{}, fmt.Errorf("hash existing destination %q: %w", destination, err)
+ 		}
+@@ -88,19 +94,24 @@
  		}
  		return receiveDecision{}, nil
  	}
@@ -522,9 +704,276 @@
  	if !bundle && !(c.bundles.peerHandshake && (c.Options.IsSender || c.bundles.manifest) && c.bundleTransferEligible() && len(c.FilesToTransfer) > 1) {
  		return nil
  	}
+--- a/src/tcp/tcp.go
++++ b/src/tcp/tcp.go
+@@ -9,11 +9,13 @@
+ 	"io"
+ 	"net"
+ 	"slices"
++	"strconv"
+ 	"strings"
+ 	"sync"
+ 	"time"
+ 
+ 	log "github.com/schollz/croc/v11/src/logger"
++	"github.com/schollz/croc/v11/src/models"
+ 	"github.com/schollz/pake/v3"
+ 
+ 	"github.com/schollz/croc/v11/src/comm"
+@@ -53,10 +55,11 @@
+ }
+ 
+ type roomInfo struct {
+-	first  *comm.Comm
+-	second *comm.Comm
+-	opened time.Time
+-	full   bool
++	first       *comm.Comm
++	second      *comm.Comm
++	opened      time.Time
++	full        bool
++	senderOwned bool
+ }
+ 
+ type roomMap struct {
+@@ -71,12 +74,16 @@
+ 	evicted           bool
+ 	evictedRoom       string
+ 	evictedConnection *comm.Comm
++	rejected          bool
+ }
+ 
+ type handshakeResult struct {
+ 	room                   string
+ 	strongKeyForEncryption []byte
+ 	fast                   bool
++	// guest authenticated with the public default password. It may join a
++	// room the sender already opened, and may not create one.
++	guest bool
+ }
+ 
+ const pingRoom = "pinglkasjdlfjsaldjf"
+@@ -104,7 +111,7 @@
+ // admitToRoom atomically creates a waiting room, joins an existing waiting
+ // room, or reports that an existing room is already full. When creating a room
+ // at capacity, it removes the oldest waiting room before inserting the new one.
+-func (s *server) admitToRoom(room string, c *comm.Comm) roomAdmission {
++func (s *server) admitToRoom(room string, c *comm.Comm, senderOwned bool) roomAdmission {
+ 	s.rooms.Lock()
+ 	defer s.rooms.Unlock()
+ 
+@@ -117,6 +124,9 @@
+ 		roomData.full = true
+ 		s.rooms.rooms[room] = roomData
+ 		return roomAdmission{otherConnection: roomData.first}
++	}
++	if !senderOwned && !s.guestMayCreateLocked(room) {
++		return roomAdmission{rejected: true}
+ 	}
+ 
+ 	waitingRooms := 0
+@@ -143,10 +153,57 @@
+ 		result.evictedConnection = oldestRoomData.first
+ 	}
+ 	s.rooms.rooms[room] = roomInfo{
+-		first:  c,
+-		opened: time.Now(),
++		first:       c,
++		opened:      time.Now(),
++		senderOwned: senderOwned,
+ 	}
+ 	return result
++}
++
++// guestMayCreateLocked allows the default password to open a data channel
++// only after the sender has admitted the receiver on the control room.
++// The rooms lock is held by the caller.
++func (s *server) guestMayCreateLocked(room string) bool {
++	dash := strings.LastIndex(room, "-")
++	if dash <= 0 || dash >= len(room)-1 {
++		return false
++	}
++	parent := room[:dash]
++	if len(parent) != 64 {
++		return false
++	}
++	for _, r := range parent {
++		if (r < '0' || r > '9') && (r < 'a' || r > 'f') {
++			return false
++		}
++	}
++	index, err := strconv.Atoi(room[dash+1:])
++	if err != nil || index < 0 || index > 7 {
++		return false
++	}
++	parentRoom, ok := s.rooms.rooms[parent]
++	return ok && parentRoom.senderOwned && parentRoom.full
++}
++
++const (
++	relayPasswordRejected = iota
++	relayPasswordSender
++	relayPasswordGuest
++)
++
++// classifyRelayPassword accepts the configured sender password for every
++// room operation. When that password is not the public default, the default
++// password may only join a room the sender already opened.
++func classifyRelayPassword(configured, got string) int {
++	configured = strings.TrimSpace(configured)
++	got = strings.TrimSpace(got)
++	if got == configured {
++		return relayPasswordSender
++	}
++	if configured != models.DEFAULT_PASSPHRASE && got == models.DEFAULT_PASSPHRASE {
++		return relayPasswordGuest
++	}
++	return relayPasswordRejected
+ }
+ 
+ // RunWithOptionsAsync asynchronously starts a TCP listener.
+@@ -485,7 +542,11 @@
+ 	if err != nil {
+ 		return
+ 	}
+-	if strings.TrimSpace(string(passwordBytes)) != strings.TrimSpace(s.password) {
++	switch classifyRelayPassword(s.password, string(passwordBytes)) {
++	case relayPasswordSender:
++	case relayPasswordGuest:
++		result.guest = true
++	default:
+ 		passwordErr := fmt.Errorf("bad password")
+ 		enc, encryptErr := crypt.Encrypt([]byte(passwordErr.Error()), strongKeyForEncryption)
+ 		if encryptErr != nil {
+@@ -530,7 +591,7 @@
+ 	}
+ 	log.Debugf("sending '%s'", banner)
+ 	response := banner + "|||" + c.Connection().RemoteAddr().String()
+-	if result.room != "" && s.fastAdmission != nil && s.banner != "" {
++	if result.room != "" && !result.guest && s.fastAdmission != nil && s.banner != "" {
+ 		if capability, issueErr := s.fastAdmission.issue(canonicalSource(c.Connection().RemoteAddr()), result.room); issueErr == nil {
+ 			response += "|||" + capability
+ 		}
+@@ -585,7 +646,14 @@
+ 		return room, ErrAdmissionLimited
+ 	}
+ 
+-	admission := s.admitToRoom(room, c)
++	admission := s.admitToRoom(room, c, !handshake.guest)
++	if admission.rejected {
++		err = sendAdmission("bad password")
++		if err != nil {
++			return room, err
++		}
++		return room, fmt.Errorf("bad password")
++	}
+ 	if admission.evicted {
+ 		log.Debug("evicting oldest waiting room at capacity")
+ 		if admission.evictedConnection != nil {
+--- a/src/tcp/tcp_test.go
++++ b/src/tcp/tcp_test.go
+@@ -7,6 +7,7 @@
+ 	"fmt"
+ 	"io"
+ 	"net"
++	"strings"
+ 	"sync"
+ 	"testing"
+ 	"time"
+@@ -185,7 +186,7 @@
+ 		},
+ 	}
+ 
+-	result := s.admitToRoom("incoming", nil)
++	result := s.admitToRoom("incoming", nil, true)
+ 
+ 	assert.True(t, result.created)
+ 	assert.True(t, result.evicted)
+@@ -205,19 +206,19 @@
+ 		},
+ 	}
+ 
+-	joined := s.admitToRoom("joining", nil)
++	joined := s.admitToRoom("joining", nil, true)
+ 	assert.False(t, joined.created)
+ 	assert.False(t, joined.full)
+ 	assert.False(t, joined.evicted)
+ 	assert.True(t, s.rooms.rooms["joining"].full)
+ 
+-	created := s.admitToRoom("waiting", nil)
++	created := s.admitToRoom("waiting", nil, true)
+ 	assert.True(t, created.created)
+ 	assert.False(t, created.evicted)
+ 	assert.Contains(t, s.rooms.rooms, "joining")
+ 	assert.Contains(t, s.rooms.rooms, "waiting")
+ 
+-	evicted := s.admitToRoom("replacement", nil)
++	evicted := s.admitToRoom("replacement", nil, true)
+ 	assert.True(t, evicted.evicted)
+ 	assert.Equal(t, "waiting", evicted.evictedRoom)
+ 	assert.Contains(t, s.rooms.rooms, "joining")
+@@ -238,7 +239,7 @@
+ 		go func(room int) {
+ 			defer wg.Done()
+ 			<-start
+-			s.admitToRoom(fmt.Sprintf("room-%d", room), nil)
++			s.admitToRoom(fmt.Sprintf("room-%d", room), nil, true)
+ 		}(i)
+ 	}
+ 	close(start)
+@@ -714,6 +715,41 @@
+ 	assert.NotContains(t, err.Error(), "testRoom")
+ }
+ 
++func TestGuestPasswordJoinsSenderRoomOnly(t *testing.T) {
++	log.SetLevel("error")
++	go Run("debug", "127.0.0.1", "8411", "secret", "8412")
++	time.Sleep(100 * time.Millisecond)
++
++	room := strings.Repeat("ab", 32)
++	_, _, _, err := ConnectToTCPServer("127.0.0.1:8411", "pass123", room)
++	if err == nil {
++		t.Fatal("default password created a room")
++	}
++
++	sender, _, _, err := ConnectToTCPServer("127.0.0.1:8411", "secret", room)
++	if err != nil {
++		t.Fatal(err)
++	}
++	defer sender.Close()
++
++	guest, _, _, err := ConnectToTCPServer("127.0.0.1:8411", "pass123", room)
++	if err != nil {
++		t.Fatalf("guest join: %v", err)
++	}
++	defer guest.Close()
++
++	dataGuest, _, _, err := ConnectToTCPServer("127.0.0.1:8411", "pass123", room+"-0")
++	if err != nil {
++		t.Fatalf("guest data channel: %v", err)
++	}
++	defer dataGuest.Close()
++	dataSender, _, _, err := ConnectToTCPServer("127.0.0.1:8411", "secret", room+"-0")
++	if err != nil {
++		t.Fatalf("sender data channel: %v", err)
++	}
++	defer dataSender.Close()
++}
++
+ // A relay password with trailing whitespace should still accept a trimmed client password.
+ func TestPasswordWithTrailingWhitespace(t *testing.T) {
+ 	log.SetLevel("error")
 --- a/src/utils/ctx.go
 +++ b/src/utils/ctx.go
-@@ -123,7 +123,7 @@
+@@ -10,6 +10,7 @@
+ 	"fmt"
+ 	"io"
+ 	"os"
++	"time"
+ 
+ 	"github.com/cespare/xxhash/v2"
+ 	"github.com/minio/highwayhash"
+@@ -123,13 +124,20 @@
  
  	// Create progress bar based on algorithm
  	var bar *progressbar.ProgressBar
@@ -533,6 +982,168 @@
  		if algorithm == "imohash" || algorithm == "imohash-v2" {
  			bar = newFileProgress("Sampling", fname, -1)
  		} else {
+ 			bar = newFileProgress("Hashing", fname, fi.Size())
+ 		}
+ 		defer clearUnfinishedProgress(bar)
++	}
++
++	if fn := hashProgressFrom(ctx); fn != nil {
++		switch algorithm {
++		case "md5", "xxhash", "highway":
++			return hashReaderProgress(sr, fi.Size(), algorithm, fn)
++		}
+ 	}
+ 
+ 	// Dispatch to appropriate hash function
+@@ -265,15 +273,8 @@
+ 	}
+ 
+ 	h := md5.New()
+-	if bar != nil {
+-		// Copy with progress tracking (like original code)
+-		if _, err := io.Copy(io.MultiWriter(h, bar), sr); err != nil {
+-			return nil, err
+-		}
+-	} else {
+-		if _, err := io.Copy(h, sr); err != nil {
+-			return nil, err
+-		}
++	if err := copyWithOptionalProgress(h, bar, sr); err != nil {
++		return nil, err
+ 	}
+ 	return h.Sum(nil), nil
+ }
+@@ -285,14 +286,8 @@
+ 	}
+ 
+ 	h := xxhash.New()
+-	if bar != nil {
+-		if _, err := io.Copy(io.MultiWriter(h, bar), sr); err != nil {
+-			return nil, err
+-		}
+-	} else {
+-		if _, err := io.Copy(h, sr); err != nil {
+-			return nil, err
+-		}
++	if err := copyWithOptionalProgress(h, bar, sr); err != nil {
++		return nil, err
+ 	}
+ 	return h.Sum(nil), nil
+ }
+@@ -313,16 +308,105 @@
+ 		return nil, fmt.Errorf("could not create highwayhash: %w", err)
+ 	}
+ 
+-	if bar != nil {
+-		if _, err := io.Copy(io.MultiWriter(h, bar), sr); err != nil {
++	if err := copyWithOptionalProgress(h, bar, sr); err != nil {
++		return nil, err
++	}
++	return h.Sum(nil), nil
++}
++
++type hashProgressKey struct{}
++
++// WithHashProgress asks HashFileCtx to report bytes hashed. The callback may
++// run on the hashing goroutine and is throttled to about ten updates a second.
++func WithHashProgress(ctx context.Context, fn func(done, total int64)) context.Context {
++	if ctx == nil {
++		ctx = context.Background()
++	}
++	if fn == nil {
++		return ctx
++	}
++	return context.WithValue(ctx, hashProgressKey{}, fn)
++}
++
++func hashProgressFrom(ctx context.Context) func(done, total int64) {
++	if ctx == nil {
++		return nil
++	}
++	fn, _ := ctx.Value(hashProgressKey{}).(func(done, total int64))
++	return fn
++}
++
++type progressReader struct {
++	r     io.Reader
++	done  int64
++	total int64
++	fn    func(done, total int64)
++	next  time.Time
++}
++
++func (p *progressReader) Read(b []byte) (int, error) {
++	n, err := p.r.Read(b)
++	if n > 0 && p.fn != nil {
++		p.done += int64(n)
++		now := time.Now()
++		if !now.Before(p.next) || p.done >= p.total || err == io.EOF {
++			p.fn(p.done, p.total)
++			p.next = now.Add(100 * time.Millisecond)
++		}
++	}
++	return n, err
++}
++
++func hashReaderProgress(sr *io.SectionReader, total int64, algorithm string, fn func(done, total int64)) ([]byte, error) {
++	if _, err := sr.Seek(0, io.SeekStart); err != nil {
++		return nil, err
++	}
++	var h io.Writer
++	var sum func([]byte) []byte
++	switch algorithm {
++	case "md5":
++		m := md5.New()
++		h, sum = m, m.Sum
++	case "xxhash":
++		x := xxhash.New()
++		h, sum = x, x.Sum
++	case "highway":
++		key, err := hex.DecodeString("1553c5383fb0b86578c3310da665b4f6e0521acf22eb58a99532ffed02a6b115")
++		if err != nil {
+ 			return nil, err
+ 		}
+-	} else {
+-		if _, err := io.Copy(h, sr); err != nil {
+-			return nil, err
+-		}
+-	}
+-	return h.Sum(nil), nil
++		hw, err := highwayhash.New(key)
++		if err != nil {
++			return nil, fmt.Errorf("could not create highwayhash: %w", err)
++		}
++		h, sum = hw, hw.Sum
++	default:
++		return nil, fmt.Errorf("unsupported algorithm: %s", algorithm)
++	}
++	fn(0, total)
++	if _, err := io.Copy(h, &progressReader{r: sr, total: total, fn: fn}); err != nil {
++		return nil, err
++	}
++	fn(total, total)
++	return sum(nil), nil
++}
++
++// copyWithOptionalProgress hashes r and, when bar is set, advances it.
++// Progress drawing must not fail the hash: a Windows GUI has no console, so
++// writing the bar to os.Stderr returns "The handle is invalid."
++func copyWithOptionalProgress(dst io.Writer, bar *progressbar.ProgressBar, r io.Reader) error {
++	if bar != nil {
++		dst = io.MultiWriter(dst, silentProgress{bar})
++	}
++	_, err := io.Copy(dst, r)
++	return err
++}
++
++type silentProgress struct{ bar *progressbar.ProgressBar }
++
++func (s silentProgress) Write(p []byte) (int, error) {
++	_, _ = s.bar.Write(p)
++	return len(p), nil
+ }
+ 
+ // Helper function to update existing HashFile to use HashFileCtx
 --- a/src/utils/utils.go
 +++ b/src/utils/utils.go
 @@ -26,6 +26,7 @@
@@ -573,9 +1184,44 @@
  	switch algorithm {
  	case "imohash":
  		return IMOHashFile(fname)
+@@ -243,7 +258,7 @@
+ 		stat, _ := f.Stat()
+ 		bar := newFileProgress("Hashing", fname, stat.Size())
+ 		defer clearUnfinishedProgress(bar)
+-		if _, err = io.Copy(io.MultiWriter(h, bar), f); err != nil {
++		if err = copyWithOptionalProgress(h, bar, f); err != nil {
+ 			return
+ 		}
+ 	} else {
+@@ -269,7 +284,7 @@
+ 		stat, _ := f.Stat()
+ 		bar := newFileProgress("Hashing", fname, stat.Size())
+ 		defer clearUnfinishedProgress(bar)
+-		if _, err = io.Copy(io.MultiWriter(h, bar), f); err != nil {
++		if err = copyWithOptionalProgress(h, bar, f); err != nil {
+ 			return
+ 		}
+ 	} else {
+@@ -326,7 +341,7 @@
+ 		stat, _ := f.Stat()
+ 		bar := newFileProgress("Hashing", fname, stat.Size())
+ 		defer clearUnfinishedProgress(bar)
+-		if _, err = io.Copy(io.MultiWriter(h, bar), f); err != nil {
++		if err = copyWithOptionalProgress(h, bar, f); err != nil {
+ 			return
+ 		}
+ 	} else {
 --- a/src/utils/utils_test.go
 +++ b/src/utils/utils_test.go
-@@ -109,6 +109,23 @@
+@@ -23,6 +23,7 @@
+ 
+ 	"github.com/schollz/croc/v11/src/codephrase"
+ 	"github.com/schollz/croc/v11/src/receivefs"
++	"github.com/schollz/progressbar/v3"
+ 	"github.com/stretchr/testify/assert"
+ )
+ 
+@@ -109,6 +110,70 @@
  		t.Run(tt.name, func(t *testing.T) {
  			assert.Equal(t, tt.want, shouldShowHashProgress(tt.requested, tt.size))
  		})
@@ -596,6 +1242,53 @@
 +
 +	if showHashProgress(true, minHashProgressSize) {
 +		t.Fatal("hash progress must stay off when stderr is not a console")
++	}
++}
++
++type rejectWriter struct{}
++
++func (rejectWriter) Write([]byte) (int, error) {
++	return 0, errors.New("write /dev/stderr: The handle is invalid")
++}
++
++func TestXXHashReaderIgnoresProgressWriteFailure(t *testing.T) {
++	payload := bytes.Repeat([]byte("abc"), 4096)
++	bar := progressbar.NewOptions64(int64(len(payload)), progressbar.OptionSetWriter(rejectWriter{}))
++	sum, err := XXHashReader(io.NewSectionReader(bytes.NewReader(payload), 0, int64(len(payload))), bar)
++	if err != nil {
++		t.Fatal(err)
++	}
++	if len(sum) == 0 {
++		t.Fatal("empty hash")
++	}
++}
++
++func TestHashFileCtxReportsProgress(t *testing.T) {
++	dir := t.TempDir()
++	name := filepath.Join(dir, "payload.bin")
++	payload := bytes.Repeat([]byte("abc"), 4096)
++	if err := os.WriteFile(name, payload, 0o644); err != nil {
++		t.Fatal(err)
++	}
++	var lastDone, lastTotal int64
++	var calls int
++	ctx := WithHashProgress(context.Background(), func(done, total int64) {
++		calls++
++		lastDone, lastTotal = done, total
++	})
++	sum, err := HashFileCtx(ctx, name, "xxhash", true)
++	if err != nil {
++		t.Fatal(err)
++	}
++	plain, err := HashFileCtx(context.Background(), name, "xxhash", false)
++	if err != nil {
++		t.Fatal(err)
++	}
++	if !bytes.Equal(sum, plain) {
++		t.Fatal("progress hash mismatch")
++	}
++	if calls < 2 || lastDone != int64(len(payload)) || lastTotal != int64(len(payload)) {
++		t.Fatalf("progress calls=%d done=%d total=%d", calls, lastDone, lastTotal)
  	}
  }
  

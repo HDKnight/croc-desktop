@@ -116,6 +116,7 @@
   "settings.relaySection": "Serveur relais",
   "settings.relayV4": "Adresse de relais (IPv4)",
   "settings.relayV6": "Adresse de relais (IPv6)",
+  "settings.relayV6Ignored": "Un relais IPv4 personnalisé est défini, l’adresse IPv6 n’est pas utilisée.",
   "settings.save": "Enregistrer les paramètres",
   "settings.saved": "Enregistré !",
   "settings.socks5": "Proxy SOCKS5",
@@ -131,10 +132,13 @@
   "status.cancelled": "Transfert annulé.",
   "status.complete": "Transfert terminé.",
   "status.connecting": "Connexion…",
+  "status.hashing": "Vérification du fichier…",
   "status.stall": "Toujours en cours — les gros fichiers peuvent prendre un moment.",
   "status.stallVerifying": "Toujours en cours — vérification des données…",
   "status.transferring": "Transfert en cours…",
   "status.verifying": "Vérification…",
+  "status.viaDirect": "Pair à pair",
+  "status.viaRelay": "Via le relais",
   "status.waitingReceive": "En attente de l'expéditeur…",
   "status.waitingSend": "En attente du destinataire — partagez le code"
 }

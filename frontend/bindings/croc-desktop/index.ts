@@ -9,5 +9,6 @@ export {
 export {
     AppInfo,
     SavedCode,
-    Settings
+    Settings,
+    ShareCommand
 } from "./models.js";

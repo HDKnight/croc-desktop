@@ -116,6 +116,7 @@
   "settings.relaySection": "Servidor relay",
   "settings.relayV4": "Dirección de retransmisión (IPv4)",
   "settings.relayV6": "Dirección de retransmisión (IPv6)",
+  "settings.relayV6Ignored": "Hay un relé IPv4 personalizado, así que la dirección IPv6 no se usa.",
   "settings.save": "Guardar ajustes",
   "settings.saved": "¡Guardado!",
   "settings.socks5": "Proxy SOCKS5",
@@ -131,10 +132,13 @@
   "status.cancelled": "Transferencia cancelada.",
   "status.complete": "Transferencia completada.",
   "status.connecting": "Conectando…",
+  "status.hashing": "Comprobando el archivo…",
   "status.stall": "Sigue trabajando — los archivos grandes pueden tardar.",
   "status.stallVerifying": "Sigue trabajando — verificando datos…",
   "status.transferring": "Transfiriendo…",
   "status.verifying": "Verificando…",
+  "status.viaDirect": "Entre pares",
+  "status.viaRelay": "A través del relé",
   "status.waitingReceive": "Esperando al remitente…",
   "status.waitingSend": "Esperando al destinatario — comparte el código"
 }

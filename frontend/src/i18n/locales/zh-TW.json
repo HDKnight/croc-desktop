@@ -116,6 +116,7 @@
   "settings.relaySection": "中繼伺服器",
   "settings.relayV4": "中繼位址（IPv4）",
   "settings.relayV6": "中繼位址（IPv6）",
+  "settings.relayV6Ignored": "已填寫自訂 IPv4 中繼，IPv6 位址不會使用。",
   "settings.save": "儲存設定",
   "settings.saved": "已儲存！",
   "settings.socks5": "SOCKS5 代理",
@@ -131,10 +132,13 @@
   "status.cancelled": "傳輸已取消。",
   "status.complete": "傳輸完成。",
   "status.connecting": "正在連線…",
+  "status.hashing": "正在校驗檔案…",
   "status.stall": "仍在處理 — 大檔案需要一些時間。",
   "status.stallVerifying": "仍在處理 — 正在驗證資料…",
   "status.transferring": "正在傳輸…",
   "status.verifying": "正在驗證…",
+  "status.viaDirect": "點對點直連",
+  "status.viaRelay": "經中繼轉送",
   "status.waitingReceive": "等待傳送方…",
   "status.waitingSend": "等待接收方 — 請分享代碼"
 }

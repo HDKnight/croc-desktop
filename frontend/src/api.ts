@@ -29,6 +29,7 @@ type WailsApp = {
   PickImage(): Promise<string>;
   GetSettings(): Promise<Settings>;
   SaveSettings(s: Settings): Promise<void>;
+  ShareCommand(code: string): Promise<{ windows: string; unix: string }>;
   GetAppInfo(): Promise<AppInfo>;
   StartRelay(ports: string[], password: string): Promise<void>;
   StopRelay(): Promise<void>;
@@ -67,6 +68,11 @@ const previewStub: Partial<WailsApp> = {
       crocVersion: "preview",
       defaultRelay: "croc.schollz.com",
       defaultRelay6: "croc6.schollz.com",
+    }),
+  ShareCommand: (code: string) =>
+    Promise.resolve({
+      windows: `croc ${code}`,
+      unix: `CROC_SECRET='${code.replace(/'/g, "'\\''")}' croc`,
     }),
   GetDefaultDownloadDir: () => Promise.resolve(""),
   GetRelayState: () => Promise.resolve({ running: false }),
@@ -149,6 +155,7 @@ export interface ProgressPayload {
   bytesTotal: number;
   filesDone: number;
   filesTotal: number;
+  peerToPeer?: boolean;
 }
 
 export interface ReceivedFile {
@@ -232,7 +239,7 @@ export interface RelayState {
   error?: string;
 }
 
-export type TransferStateName = "connecting" | "waiting" | "transferring" | "cancelled";
+export type TransferStateName = "connecting" | "waiting" | "hashing" | "transferring" | "cancelled";
 
 // Subscribe to a backend event; returns an unsubscribe function.
 // v3 delivers a WailsEvent object; we unwrap .data for callers.

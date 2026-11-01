@@ -368,6 +368,15 @@ func (a *App) GetSettings() Settings {
 	return a.settings
 }
 
+// ShareCommand returns the pasteable receive command for code, including the
+// relay and password that this app will actually use.
+func (a *App) ShareCommand(code string) ShareCommand {
+	a.settingsMu.Lock()
+	s := a.settings
+	a.settingsMu.Unlock()
+	return formatShareCommand(s, code)
+}
+
 func (a *App) SaveSettings(s Settings) error {
 	if !validThrottle(s.ThrottleUpload) {
 		return fmt.Errorf("invalid upload limit %q — use a number with an optional k/m/g suffix, e.g. 500k or 2m", s.ThrottleUpload)

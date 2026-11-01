@@ -1659,8 +1659,9 @@ func (c *Client) senderWaitForHandshake(conn *comm.Comm) error {
 // queued immediately after room admission, before the peer's PAKE response.
 // Always consume the whole reply before reporting an expired discovery budget:
 // abandoning a read can leave a late reply or partial frame in the connection
-// that will next be used for compressed transfer messages. An actual read error
-// makes the connection unusable and must abort the transfer.
+// that will next be used for compressed transfer messages. A deadline is
+// returned to the caller, which keeps the relay. Any other read error can
+// leave a partial frame and must abort the transfer.
 func receiveControlFrame(conn *comm.Comm) ([]byte, error) {
 	started := time.Now()
 	budget := started.Add(localProbeResponseTimeout)
@@ -1679,6 +1680,20 @@ func receiveControlFrame(conn *comm.Comm) ([]byte, error) {
 		}
 		return data, nil
 	}
+}
+
+// isLocalProbeTimeout reports a local-discovery read that hit its deadline
+// before a complete frame arrived. The relay transfer can continue.
+func isLocalProbeTimeout(err error) bool {
+	if err == nil {
+		return false
+	}
+	var netErr net.Error
+	if errors.As(err, &netErr) && netErr.Timeout() {
+		return true
+	}
+	msg := err.Error()
+	return strings.Contains(msg, "i/o timeout") || strings.Contains(msg, "deadline exceeded")
 }
 
 func isFatalSenderRouteError(err error) bool {
@@ -2174,10 +2189,15 @@ func (c *Client) Receive() (err error) {
 			return
 		}()
 		if err != nil {
-			if !errors.Is(err, errLocalProbeExpired) {
+			// A deadline with no complete frame is the same outcome as an
+			// expired probe budget: keep the relay. A partial read can desync
+			// the stream, but aborting here drops a transfer that can still
+			// finish through the relay once the next read clears the deadline.
+			if !errors.Is(err, errLocalProbeExpired) && !isLocalProbeTimeout(err) {
 				return fmt.Errorf("local discovery failed: %w", err)
 			}
 			log.Debug("local discovery exceeded its budget; using relay")
+			err = nil
 		}
 
 		if len(ips) > 1 {

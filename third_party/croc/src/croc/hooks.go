@@ -1,12 +1,18 @@
 package croc
 
 import (
+	"os"
 	"path"
+	"path/filepath"
 
 	"github.com/schollz/croc/v11/src/models"
 	"github.com/schollz/croc/v11/src/utils"
 	"github.com/schollz/progressbar/v3"
 )
+
+// Files at least this large get a GUI hashing progress report. Smaller files
+// finish quickly enough that a separate phase would only flicker.
+const guiHashProgressMin int64 = 32 << 20
 
 // Hooks bridges an embedded client to a GUI. Install before Send or Receive;
 // callbacks may run on transfer goroutines. Nil callbacks retain CLI behavior.
@@ -28,6 +34,9 @@ type ProgressEvent struct {
 	BytesTotal int64  `json:"bytesTotal"`
 	FilesDone  int    `json:"filesDone"`
 	FilesTotal int    `json:"filesTotal"`
+	// PeerToPeer is true when file bytes are flowing directly between the two
+	// machines. False means the configured relay is carrying the file.
+	PeerToPeer bool `json:"peerToPeer"`
 }
 
 type AcceptRequest struct {
@@ -68,7 +77,44 @@ func (c *Client) emitProgress(bar *progressbar.ProgressBar) {
 		return
 	}
 	event.BytesDone = int64(bar.State().CurrentBytes)
+	event.PeerToPeer = c.peerToPeerDataPath()
 	c.hooks.OnProgress(event)
+}
+
+// hashForTransfer hashes filename for a send or receive. Embedded clients
+// report progress instead of drawing a console bar.
+func (c *Client) hashForTransfer(filename, algorithm string, cliProgress bool) ([]byte, error) {
+	ctx := c.clientContext()
+	reported := false
+	if c.hooks != nil && c.hooks.OnProgress != nil {
+		cliProgress = false
+		if info, statErr := os.Stat(filename); statErr == nil && info.Size() >= guiHashProgressMin {
+			reported = true
+			c.emitState("hashing")
+			base := filepath.Base(filename)
+			ctx = utils.WithHashProgress(ctx, func(done, total int64) {
+				if c.hooks == nil || c.hooks.OnProgress == nil {
+					return
+				}
+				c.hooks.OnProgress(ProgressEvent{
+					Filename:   base,
+					BytesDone:  done,
+					BytesTotal: total,
+				})
+			})
+		}
+	}
+	sum, err := utils.HashFileCtx(ctx, filename, algorithm, cliProgress)
+	// Hashing runs before the peer is connected. Return to the waiting or
+	// connecting status unless file bytes have already started moving.
+	if reported && !c.activeTransferStarted() {
+		if c.Options.IsSender {
+			c.emitState("waiting")
+		} else {
+			c.emitState("connecting")
+		}
+	}
+	return sum, err
 }
 
 func (c *Client) askReceiveOverwrite(fileInfo FileInfo, resumable bool) (bool, error) {

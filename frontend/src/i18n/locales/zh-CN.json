@@ -116,6 +116,7 @@
   "settings.relaySection": "中继服务器",
   "settings.relayV4": "中继地址（IPv4）",
   "settings.relayV6": "中继地址（IPv6）",
+  "settings.relayV6Ignored": "已填写自定义 IPv4 中继，IPv6 地址不会使用。",
   "settings.save": "保存设置",
   "settings.saved": "已保存！",
   "settings.socks5": "SOCKS5 代理",
@@ -131,10 +132,13 @@
   "status.cancelled": "传输已取消。",
   "status.complete": "传输完成。",
   "status.connecting": "正在连接…",
+  "status.hashing": "正在校验文件…",
   "status.stall": "仍在处理 — 大文件需要一些时间。",
   "status.stallVerifying": "仍在处理 — 正在校验数据…",
   "status.transferring": "正在传输…",
   "status.verifying": "正在校验…",
+  "status.viaDirect": "点对点直连",
+  "status.viaRelay": "经中继转发",
   "status.waitingReceive": "等待发送方…",
   "status.waitingSend": "等待接收方 — 请分享代码"
 }

@@ -120,6 +120,7 @@ export default function App() {
         e.key === "Escape" &&
         (transfer.phase === "connecting" ||
           transfer.phase === "waiting" ||
+          transfer.phase === "hashing" ||
           transfer.phase === "transferring")
       ) {
         Backend.CancelTransfer();

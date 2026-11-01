@@ -208,6 +208,7 @@ export function StatusCard({
   const cancellable =
     transfer.phase === "connecting" ||
     transfer.phase === "waiting" ||
+    transfer.phase === "hashing" ||
     transfer.phase === "transferring";
 
   // re-evaluate the stall hint periodically; the interval callback (not
@@ -234,10 +235,19 @@ export function StatusCard({
           {transfer.direction === "send" ? t("status.waitingSend") : t("status.waitingReceive")}
         </p>
       )}
+      {transfer.phase === "hashing" && (
+        <>
+          {transfer.progress ? <ProgressBar progress={transfer.progress} /> : null}
+          <p className="status pulse">{t("status.hashing")}</p>
+        </>
+      )}
       {transfer.phase === "transferring" &&
         (transfer.progress ? (
           <>
             <ProgressBar progress={transfer.progress} />
+            <p className="hint">
+              {transfer.progress.peerToPeer ? t("status.viaDirect") : t("status.viaRelay")}
+            </p>
             {verifying && <p className="status pulse">{t("status.verifying")}</p>}
           </>
         ) : (

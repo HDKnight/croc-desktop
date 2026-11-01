@@ -14,7 +14,7 @@ import (
 
 // events emitted to the frontend
 const (
-	eventState     = "transfer:state"     // string: connecting | waiting | transferring | cancelled
+	eventState     = "transfer:state"     // string: connecting | waiting | hashing | transferring | cancelled
 	eventProgress  = "transfer:progress"  // croc.ProgressEvent
 	eventAccept    = "transfer:accept"    // acceptPayload
 	eventOverwrite = "transfer:overwrite" // overwritePayload

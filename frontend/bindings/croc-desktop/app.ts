@@ -164,6 +164,16 @@ export function SaveSettings(s: $models.Settings): $CancellablePromise<void> {
 }
 
 /**
+ * ShareCommand returns the pasteable receive command for code, including the
+ * relay and password that this app will actually use.
+ */
+export function ShareCommand(code: string): $CancellablePromise<$models.ShareCommand> {
+    return $Call.ByID(452994665, code).then(($result: any) => {
+        return $$createType8($result);
+    });
+}
+
+/**
  * StartReceive connects with the given code phrase and receives into outDir.
  * Progress and prompts arrive as events.
  */
@@ -204,3 +214,4 @@ const $$createType4 = $Create.Array($$createType3);
 const $$createType5 = $models.relayState.createFrom;
 const $$createType6 = $models.Settings.createFrom;
 const $$createType7 = $Create.Array($Create.Any);
+const $$createType8 = $models.ShareCommand.createFrom;

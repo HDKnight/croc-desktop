@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"time"
 
 	"github.com/cespare/xxhash/v2"
 	"github.com/minio/highwayhash"
@@ -130,6 +131,13 @@ func HashFileCtx(ctx context.Context, fname string, algorithm string, showProgre
 			bar = newFileProgress("Hashing", fname, fi.Size())
 		}
 		defer clearUnfinishedProgress(bar)
+	}
+
+	if fn := hashProgressFrom(ctx); fn != nil {
+		switch algorithm {
+		case "md5", "xxhash", "highway":
+			return hashReaderProgress(sr, fi.Size(), algorithm, fn)
+		}
 	}
 
 	// Dispatch to appropriate hash function
@@ -265,15 +273,8 @@ func MD5HashReader(sr *io.SectionReader, bar *progressbar.ProgressBar) ([]byte, 
 	}
 
 	h := md5.New()
-	if bar != nil {
-		// Copy with progress tracking (like original code)
-		if _, err := io.Copy(io.MultiWriter(h, bar), sr); err != nil {
-			return nil, err
-		}
-	} else {
-		if _, err := io.Copy(h, sr); err != nil {
-			return nil, err
-		}
+	if err := copyWithOptionalProgress(h, bar, sr); err != nil {
+		return nil, err
 	}
 	return h.Sum(nil), nil
 }
@@ -285,14 +286,8 @@ func XXHashReader(sr *io.SectionReader, bar *progressbar.ProgressBar) ([]byte, e
 	}
 
 	h := xxhash.New()
-	if bar != nil {
-		if _, err := io.Copy(io.MultiWriter(h, bar), sr); err != nil {
-			return nil, err
-		}
-	} else {
-		if _, err := io.Copy(h, sr); err != nil {
-			return nil, err
-		}
+	if err := copyWithOptionalProgress(h, bar, sr); err != nil {
+		return nil, err
 	}
 	return h.Sum(nil), nil
 }
@@ -313,16 +308,105 @@ func HighwayHashReader(sr *io.SectionReader, bar *progressbar.ProgressBar) ([]by
 		return nil, fmt.Errorf("could not create highwayhash: %w", err)
 	}
 
-	if bar != nil {
-		if _, err := io.Copy(io.MultiWriter(h, bar), sr); err != nil {
-			return nil, err
-		}
-	} else {
-		if _, err := io.Copy(h, sr); err != nil {
-			return nil, err
-		}
+	if err := copyWithOptionalProgress(h, bar, sr); err != nil {
+		return nil, err
 	}
 	return h.Sum(nil), nil
+}
+
+type hashProgressKey struct{}
+
+// WithHashProgress asks HashFileCtx to report bytes hashed. The callback may
+// run on the hashing goroutine and is throttled to about ten updates a second.
+func WithHashProgress(ctx context.Context, fn func(done, total int64)) context.Context {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	if fn == nil {
+		return ctx
+	}
+	return context.WithValue(ctx, hashProgressKey{}, fn)
+}
+
+func hashProgressFrom(ctx context.Context) func(done, total int64) {
+	if ctx == nil {
+		return nil
+	}
+	fn, _ := ctx.Value(hashProgressKey{}).(func(done, total int64))
+	return fn
+}
+
+type progressReader struct {
+	r     io.Reader
+	done  int64
+	total int64
+	fn    func(done, total int64)
+	next  time.Time
+}
+
+func (p *progressReader) Read(b []byte) (int, error) {
+	n, err := p.r.Read(b)
+	if n > 0 && p.fn != nil {
+		p.done += int64(n)
+		now := time.Now()
+		if !now.Before(p.next) || p.done >= p.total || err == io.EOF {
+			p.fn(p.done, p.total)
+			p.next = now.Add(100 * time.Millisecond)
+		}
+	}
+	return n, err
+}
+
+func hashReaderProgress(sr *io.SectionReader, total int64, algorithm string, fn func(done, total int64)) ([]byte, error) {
+	if _, err := sr.Seek(0, io.SeekStart); err != nil {
+		return nil, err
+	}
+	var h io.Writer
+	var sum func([]byte) []byte
+	switch algorithm {
+	case "md5":
+		m := md5.New()
+		h, sum = m, m.Sum
+	case "xxhash":
+		x := xxhash.New()
+		h, sum = x, x.Sum
+	case "highway":
+		key, err := hex.DecodeString("1553c5383fb0b86578c3310da665b4f6e0521acf22eb58a99532ffed02a6b115")
+		if err != nil {
+			return nil, err
+		}
+		hw, err := highwayhash.New(key)
+		if err != nil {
+			return nil, fmt.Errorf("could not create highwayhash: %w", err)
+		}
+		h, sum = hw, hw.Sum
+	default:
+		return nil, fmt.Errorf("unsupported algorithm: %s", algorithm)
+	}
+	fn(0, total)
+	if _, err := io.Copy(h, &progressReader{r: sr, total: total, fn: fn}); err != nil {
+		return nil, err
+	}
+	fn(total, total)
+	return sum(nil), nil
+}
+
+// copyWithOptionalProgress hashes r and, when bar is set, advances it.
+// Progress drawing must not fail the hash: a Windows GUI has no console, so
+// writing the bar to os.Stderr returns "The handle is invalid."
+func copyWithOptionalProgress(dst io.Writer, bar *progressbar.ProgressBar, r io.Reader) error {
+	if bar != nil {
+		dst = io.MultiWriter(dst, silentProgress{bar})
+	}
+	_, err := io.Copy(dst, r)
+	return err
+}
+
+type silentProgress struct{ bar *progressbar.ProgressBar }
+
+func (s silentProgress) Write(p []byte) (int, error) {
+	_, _ = s.bar.Write(p)
+	return len(p), nil
 }
 
 // Helper function to update existing HashFile to use HashFileCtx
