@@ -1,19 +1,19 @@
 # croc-desktop one-line installer (Windows)
 #
-#   irm https://raw.githubusercontent.com/SihanTeng/croc-desktop/main/install.ps1 | iex
+#   irm https://raw.githubusercontent.com/HDKnight/croc-desktop/main/install.ps1 | iex
 #
 # Optional (set before piping to iex):
 #   $env:VERSION = "v0.2.0"   # pin a release tag
-#   $env:REPO = "SihanTeng/croc-desktop"
+#   $env:REPO = "HDKnight/croc-desktop"
 #   $env:GITHUB_TOKEN = "..." # higher API rate limit
 #
 # Linux / macOS:
-#   curl -fsSL https://raw.githubusercontent.com/SihanTeng/croc-desktop/main/install.sh | bash
+#   curl -fsSL https://raw.githubusercontent.com/HDKnight/croc-desktop/main/install.sh | bash
 
 $ErrorActionPreference = "Stop"
 
 # Avoid naming a parameter $Args — breaks `irm | iex` on PowerShell 7+.
-$Repo = if ($env:REPO) { $env:REPO } else { "SihanTeng/croc-desktop" }
+$Repo = if ($env:REPO) { $env:REPO } else { "HDKnight/croc-desktop" }
 $AppName = "croc-desktop"
 $GithubApi = "https://api.github.com"
 $GithubDl = "https://github.com"

@@ -20,9 +20,9 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/SihanTeng/croc-desktop/releases/latest"><img src="https://img.shields.io/github/v/release/SihanTeng/croc-desktop?style=for-the-badge&label=Download&color=1F6FEB" alt="下载" /></a>
+  <a href="https://github.com/HDKnight/croc-desktop/releases/latest"><img src="https://img.shields.io/github/v/release/HDKnight/croc-desktop?style=for-the-badge&label=Download&color=1F6FEB" alt="下载" /></a>
   &nbsp;
-  <a href="https://github.com/SihanTeng/croc-desktop/actions/workflows/ci.yml"><img src="https://img.shields.io/github/actions/workflow/status/SihanTeng/croc-desktop/ci.yml?branch=main&style=for-the-badge&label=CI" alt="CI" /></a>
+  <a href="https://github.com/HDKnight/croc-desktop/actions/workflows/ci.yml"><img src="https://img.shields.io/github/actions/workflow/status/HDKnight/croc-desktop/ci.yml?branch=main&style=for-the-badge&label=CI" alt="CI" /></a>
   &nbsp;
   <img src="https://img.shields.io/badge/Desktop-Linux%20%7C%20macOS%20%7C%20Windows-1F6FEB?style=for-the-badge" alt="桌面平台" />
   &nbsp;
@@ -80,13 +80,13 @@
 **Linux / macOS：**
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/SihanTeng/croc-desktop/main/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/HDKnight/croc-desktop/main/install.sh | bash
 ```
 
 **Windows（PowerShell）：**
 
 ```powershell
-irm https://raw.githubusercontent.com/SihanTeng/croc-desktop/main/install.ps1 | iex
+irm https://raw.githubusercontent.com/HDKnight/croc-desktop/main/install.ps1 | iex
 ```
 
 | 平台 | 脚本安装的内容 | 说明 |
@@ -99,7 +99,7 @@ irm https://raw.githubusercontent.com/SihanTeng/croc-desktop/main/install.ps1 | 
 
 ### 手动下载
 
-**[前往 Releases →](https://github.com/SihanTeng/croc-desktop/releases/latest)**
+**[前往 Releases →](https://github.com/HDKnight/croc-desktop/releases/latest)**
 
 | 平台 | 文件 | 提示 |
 | --- | --- | --- |
@@ -109,20 +109,9 @@ irm https://raw.githubusercontent.com/SihanTeng/croc-desktop/main/install.ps1 | 
 
 ### 包管理器
 
-**Homebrew（macOS，Apple Silicon）：**
+本仓库的安装包发布在 [HDKnight/croc-desktop Releases](https://github.com/HDKnight/croc-desktop/releases)。请使用上面的安装脚本或手动下载。
 
-```sh
-brew install --cask sihanteng/tap/croc-desktop
-```
-
-下列渠道仍在计划中，目前还没有发布包：
-
-| 渠道 | 平台 | 状态 |
-| --- | --- | --- |
-| **AUR** | Arch Linux | 计划中，尚未发布 |
-| **Fedora**（Copr / 官方仓库） | Fedora | 计划中，尚未发布 |
-
-在此之前，请用上面的一行安装脚本，或从 Releases 手动下载。
+上游项目的 Homebrew cask（`sihanteng/tap`）安装的是 [SihanTeng/croc-desktop](https://github.com/SihanTeng/croc-desktop)，不是本仓库的构建。AUR 与 Fedora 也尚未提供本仓库的包。
 
 > 传输双方各自安装本应用或 [croc 命令行](https://github.com/schollz/croc) 即可。
 
@@ -135,7 +124,7 @@ brew install --cask sihanteng/tap/croc-desktop
 | **iOS** | 实验性，需从源码构建 | 脚手架在 [`build/ios/`](build/ios/) | 模拟器 / 真机（macOS 上需要完整 **Xcode**） |
 | **Android** | 实验性，需从源码构建 | 脚手架在 [`build/android/`](build/android/) | 模拟器 / 真机（需要 **Android SDK + NDK**） |
 
-**App Store 和 Play 商店还没有安装包。** 移动端面向自行从本仓库构建的人（或你自己配的 CI）。可下载的正式途径仍是 [Releases](https://github.com/SihanTeng/croc-desktop/releases) 上的桌面版。
+**App Store 和 Play 商店还没有安装包。** 移动端面向自行从本仓库构建的人（或你自己配的 CI）。可下载的正式途径仍是 [Releases](https://github.com/HDKnight/croc-desktop/releases) 上的桌面版。
 
 ### 构建并运行移动端
 
@@ -385,9 +374,8 @@ npm --prefix frontend test
 
 更多说明见 `e2e/README.md`、`design.md`，以及 `build/` 下的 Taskfile。
 
-**发布：** 推送版本标签后，CI 会构建三个桌面平台、发布 GitHub Release，并更新
-[SihanTeng/homebrew-tap](https://github.com/SihanTeng/homebrew-tap) 中的 Homebrew cask
-（未设置 `HOMEBREW_TAP_GITHUB_TOKEN` 时会静默跳过）：
+**发布：** 向本仓库推送版本标签后，CI 会构建三个桌面平台，并发布到
+[HDKnight/croc-desktop Releases](https://github.com/HDKnight/croc-desktop/releases)：
 
 ```sh
 git tag v0.2.1 && git push --tags
@@ -406,7 +394,7 @@ git tag v0.2.1 && git push --tags
 
 ## 许可证 {#license}
 
-[MIT](LICENSE) © SihanTeng。croc-desktop 是**非官方**社区项目，与 croc 作者没有隶属或背书关系。`croc` 本身由其各自作者以 MIT 许可发布。
+[MIT](LICENSE) © SihanTeng。本仓库是 [HDKnight/croc-desktop](https://github.com/HDKnight/croc-desktop)，基于上游 [SihanTeng/croc-desktop](https://github.com/SihanTeng/croc-desktop)。它是**非官方**社区项目，与 croc 作者没有隶属或背书关系。`croc` 本身由其各自作者以 MIT 许可发布。
 
 ---
 

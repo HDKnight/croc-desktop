@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # croc-desktop one-line installer (Linux / macOS)
 #
-#   curl -fsSL https://raw.githubusercontent.com/SihanTeng/croc-desktop/main/install.sh | bash
+#   curl -fsSL https://raw.githubusercontent.com/HDKnight/croc-desktop/main/install.sh | bash
 #
 # Optional:
 #   VERSION=v0.2.0  curl -fsSL ... | bash          # pin a release tag
@@ -9,11 +9,11 @@
 #   GITHUB_TOKEN=...  curl -fsSL ... | bash       # higher API rate limit
 #
 # Windows users:
-#   irm https://raw.githubusercontent.com/SihanTeng/croc-desktop/main/install.ps1 | iex
+#   irm https://raw.githubusercontent.com/HDKnight/croc-desktop/main/install.ps1 | iex
 
 set -euo pipefail
 
-REPO="${REPO:-SihanTeng/croc-desktop}"
+REPO="${REPO:-HDKnight/croc-desktop}"
 APP_NAME="croc-desktop"
 GITHUB_API="https://api.github.com"
 GITHUB_DL="https://github.com"
