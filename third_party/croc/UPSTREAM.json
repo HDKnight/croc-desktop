@@ -1,9 +1,9 @@
 {
   "module": "github.com/schollz/croc/v11",
-  "version": "v11.5.4",
-  "commit": "15a4577e56bf6bbad116576e448bd33120bd90c1",
-  "sum": "h1:PPm56ZlOzO2HYQnARoETX3aqQRinXDKvxROFt/yP0HQ=",
-  "go_mod_sum": "h1:82adowhzrBNRu0unwPlj72lzpv1dsNYwBSYA+lYGyW4=",
+  "version": "v11.6.0",
+  "commit": "f707beef66921431eea567887eb94ab7efbfd038",
+  "sum": "h1:w42ZOvb2P2ttgl4VZc0lKgTR4AeXEh2LfvnraOAYNgA=",
+  "go_mod_sum": "h1:/+4qMkShJCmQn0UyLRVofoxobh7Cv3RIe145MGXLIPs=",
   "included": [
     "src",
     "internal",

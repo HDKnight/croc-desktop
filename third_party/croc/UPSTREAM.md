@@ -1,8 +1,8 @@
 # Pinned croc engine
 
 This directory contains the `src` and `internal` library trees, module files,
-license and third-party notices from **schollz/croc v11.5.4**, commit
-`15a4577e56bf6bbad116576e448bd33120bd90c1`.
+license and third-party notices from **schollz/croc v11.6.0**, commit
+`f707beef66921431eea567887eb94ab7efbfd038`.
 The exact module checksums and copied paths are in `UPSTREAM.json`.
 
 Upstream does not expose the acceptance, overwrite and progress callbacks the

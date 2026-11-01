@@ -60,7 +60,7 @@
  	c.barMu.Unlock()
  }
  
-@@ -160,6 +163,7 @@
+@@ -163,6 +166,7 @@
  	c.barMu.RUnlock()
  	if bar != nil {
  		_ = bar.Add64(delta)
@@ -68,7 +68,7 @@
  	}
  }
  
-@@ -169,5 +173,6 @@
+@@ -175,5 +179,6 @@
  	c.barMu.RUnlock()
  	if bar != nil {
  		_ = bar.Finish()
@@ -77,7 +77,7 @@
  }
 --- a/src/croc/croc.go
 +++ b/src/croc/croc.go
-@@ -94,6 +94,8 @@
+@@ -96,6 +96,8 @@
  
  // Options specifies user specific options
  type Options struct {
@@ -86,16 +86,16 @@
  	IsSender          bool
  	SharedSecret      string
  	RoomName          string
-@@ -186,6 +188,8 @@
+@@ -188,6 +190,8 @@
  
  // Client holds the state of the croc transfer
  type Client struct {
 +	hooks                           *Hooks
 +	guiProgress                     ProgressEvent
- 	Options                         Options
- 	Pake                            *pake.Pake
- 	Key                             []byte
-@@ -682,7 +686,9 @@
+ 	receiveChoices                  map[int]bool
+ 	bundleCommitted                 map[string]FileInfo
+ 	bundles                         bundleClientState
+@@ -703,7 +707,9 @@
  }
  
  func (c *Client) markTransferStarted() {
@@ -106,7 +106,7 @@
  }
  
  func (c *Client) markSenderRouteReady() {
-@@ -1778,6 +1784,7 @@
+@@ -1781,6 +1787,7 @@
  
  // Send will send the specified file
  func (c *Client) Send(filesInfo []FileInfo, emptyFoldersToTransfer []FileInfo, totalNumberFolders int) (err error) {
@@ -114,7 +114,7 @@
  	defer func() { err = c.redactError(err) }()
  	go c.stop.done()
  	defer c.stop.Cancel()
-@@ -2006,6 +2013,7 @@
+@@ -2011,6 +2018,7 @@
  
  // Receive will receive a file
  func (c *Client) Receive() (err error) {
@@ -122,7 +122,18 @@
  	defer func() { err = c.redactError(err) }()
  	go c.stop.done()
  	defer c.stop.Cancel()
-@@ -2535,7 +2543,23 @@
+@@ -2528,8 +2536,8 @@
+ 	if err != nil {
+ 		return
+ 	}
+-	output, colorEnabled := termui.Output(os.Stderr)
+-	if c.ensureProgressDisplay(false) == nil {
++	if c.hooks == nil && c.ensureProgressDisplay(false) == nil {
++		output, colorEnabled := termui.Output(os.Stderr)
+ 		fmt.Fprintln(output, termui.Filename(c.EmptyFoldersToTransfer[i].FolderRemote, colorEnabled))
+ 	}
+ 	c.setProgressBar(c.newProgressBar(1, " ", 0))
+@@ -2644,7 +2652,23 @@
  		fname = "text message"
  		displayName = ""
  	}
@@ -147,7 +158,7 @@
  		output, colorEnabled := termui.Output(os.Stderr)
  		if displayName != "" {
  			fname = quotedFilename(displayName, colorEnabled)
-@@ -2590,6 +2614,18 @@
+@@ -2699,6 +2723,18 @@
  		} else {
  			isEmpty, _ := isEmptyFolder(c.EmptyFoldersToTransfer[i].FolderRemote)
  			if !isEmpty {
@@ -166,7 +177,7 @@
  				log.Debug("asking to overwrite")
  				output, colorEnabled := termui.Output(os.Stderr)
  				fmt.Fprintf(output, "\n%s already has some content in it. \nDo you want to %s it with an empty folder? %s ",
-@@ -3021,7 +3057,16 @@
+@@ -3147,7 +3183,16 @@
  		c.updateLifecycle(func(state *transferLifecycle) { state.RecipientRequested = true })
  		c.markTransferStarted()
  
@@ -184,16 +195,26 @@
  			output, colorEnabled := termui.Output(os.Stderr)
  			fmt.Fprintf(output, "Send to machine '%s'? %s ",
  				remoteFile.MachineID,
-@@ -3458,7 +3503,7 @@
- 			}
- 			if destinationExists && !c.Options.Overwrite && !c.Options.Rename && !isTextArtifact {
- 				resumable := fileInfo.Size > 0 && fileInfo.Symlink == "" && recipientFileInfo.Mode().IsRegular()
--				overwrite, promptErr := askReceiveOverwrite(c.clientContext(), fileInfo, resumable)
-+				overwrite, promptErr := c.askReceiveOverwrite(fileInfo, resumable)
- 				if promptErr != nil {
- 					return promptErr
- 				}
-@@ -3745,7 +3790,11 @@
+@@ -3549,7 +3594,7 @@
+ 		c.FilesToTransferCurrentNum = i
+ 		c.numberOfTransferredFiles++
+ 		folder, _ := filepath.Split(file.FolderRemote)
+-		if folder != c.LastFolder && !c.Options.SendingText && folder != "./" {
++		if c.hooks == nil && folder != c.LastFolder && !c.Options.SendingText && folder != "./" {
+ 			output, color := termui.Output(os.Stderr)
+ 			fmt.Fprintf(output, "\r%s\n", termui.Filename(folder, color))
+ 		}
+@@ -3561,6 +3606,9 @@
+ 
+ func (c *Client) fmtPrintUpdate() {
+ 	c.finishedNum++
++	if c.hooks != nil {
++		return
++	}
+ 	if display := c.progressDisplaySnapshot(); display != nil {
+ 		display.completeFile(c.finishedNum)
+ 		return
+@@ -3802,7 +3850,11 @@
  					attempt.report(closeErr)
  					return
  				}
@@ -407,9 +428,48 @@
 +		t.Fatalf("resume response = %v, %v; callback=%v", accepted, err, called)
 +	}
 +}
+--- a/src/croc/receive_preflight.go
++++ b/src/croc/receive_preflight.go
+@@ -5,6 +5,7 @@
+ 	"fmt"
+ 	"os"
+ 	"path"
++	"path/filepath"
+ 	"strings"
+ 
+ 	log "github.com/schollz/croc/v11/src/logger"
+@@ -88,19 +89,24 @@
+ 		}
+ 		return receiveDecision{}, nil
+ 	}
+-	textArtifact := c.Options.SendingText && strings.HasPrefix(path.Base(file.Name), "croc-stdin-")
++	// RandomFileName creates ".\croc-stdin-*" on Windows. path.Base only
++	// splits on '/', so the placeholder would look like a normal file and
++	// block an embedded client on an overwrite prompt.
++	textArtifact := c.Options.SendingText && (strings.HasPrefix(path.Base(file.Name), "croc-stdin-") || strings.HasPrefix(filepath.Base(file.Name), "croc-stdin-"))
+ 	if exists && !textArtifact && c.Options.Rename && !c.receiverWroteFile(index) {
+ 		name, err := c.unusedReceiveName(root, index)
+ 		if err != nil {
+ 			return receiveDecision{}, err
+ 		}
+-		output, color := termui.Output(os.Stderr)
+-		fmt.Fprintf(output, "Receiving %s as %s\n", quotedFilename(file.Name, color), quotedFilename(name, color))
++		if c.hooks == nil {
++			output, color := termui.Output(os.Stderr)
++			fmt.Fprintf(output, "Receiving %s as %s\n", quotedFilename(file.Name, color), quotedFilename(name, color))
++		}
+ 		c.FilesToTransfer[index].Name = name
+ 		return receiveDecision{requested: true, fresh: true}, nil
+ 	}
+ 	if exists && !textArtifact && !c.Options.Overwrite && !c.Options.Rename && !c.receiveChoices[index] {
+-		accepted, err := askReceiveOverwrite(c.clientContext(), file, file.Size > 0 && file.Symlink == "" && stat.Mode().IsRegular())
++		accepted, err := c.askReceiveOverwrite(file, file.Size > 0 && file.Symlink == "" && stat.Mode().IsRegular())
+ 		if err != nil {
+ 			return receiveDecision{}, err
+ 		}
 --- a/src/croc/tailcat_negotiation.go
 +++ b/src/croc/tailcat_negotiation.go
-@@ -221,7 +221,7 @@
+@@ -222,7 +222,7 @@
  }
  
  func (c *Client) localTailcatSupported() bool {
@@ -418,7 +478,7 @@
  		return false
  	}
  	if !c.Options.IsSender || c.Options.Transport == TransportDERP {
-@@ -289,7 +289,7 @@
+@@ -290,7 +290,7 @@
  func (c *Client) startTailcatPreparation() {
  	dataTransport := c.dataTransport()
  	transport, ok := dataTransport.(tailcatPreparingTransport)
@@ -439,9 +499,9 @@
  	output, _ := termui.Output(os.Stderr)
  	c.receiveStatusWidth = writeReceiveStatus(output, c.receiveStatusWidth, status)
  }
-@@ -56,6 +59,10 @@
+@@ -67,6 +70,10 @@
  
- func (c *Client) newProgressBar(max int64, description string, throttle time.Duration) *progressbar.ProgressBar {
+ func (c *Client) newDataUnitProgressBar(max int64, description string, throttle time.Duration, completed func()) *progressbar.ProgressBar {
  	output, colorEnabled := termui.Output(os.Stderr)
 +	if c.hooks != nil {
 +		output = io.Discard
@@ -450,3 +510,15 @@
  	return termui.NewProgress(termui.ProgressConfig{
  		Max:          max,
  		Description:  termui.ProgressDescription("", description, colorEnabled),
+--- a/src/croc/transfer_progress.go
++++ b/src/croc/transfer_progress.go
+@@ -49,6 +49,9 @@
+ }
+ 
+ func (c *Client) ensureProgressDisplay(bundle bool) *transferProgressDisplay {
++	if c.hooks != nil {
++		return nil
++	}
+ 	if !bundle && !(c.bundles.peerHandshake && (c.Options.IsSender || c.bundles.manifest) && c.bundleTransferEligible() && len(c.FilesToTransfer) > 1) {
+ 		return nil
+ 	}

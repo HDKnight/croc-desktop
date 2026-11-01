@@ -1,12 +1,12 @@
 # croc v11 desktop migration
 
-The desktop now uses **croc v11.5.4**, the latest published release checked on
-2026-09-27, building on PR #2's v11 import migration. This includes the v11.5.4
-fixes for skipped archive extraction and accidental stdout-file deletion.
+The desktop now uses **croc v11.6.0**, checked on 2026-11-01. The GUI embedding
+from the v11.5.4 snapshot was ported onto this release, including its empty-folder
+and transfer fixes.
 
 ## User-visible changes
 
-- **macOS 13 Ventura or newer is required.** Croc v11.5.4 requires Go 1.27,
+- **macOS 13 Ventura or newer is required.** Croc v11.6.0 requires Go 1.27.1,
   whose runtime no longer supports macOS 12. The native build target, app bundle
   metadata and Homebrew template now agree with this minimum.
   See the [Go 1.27 release notes](https://go.dev/doc/go1.27#darwin).
@@ -42,7 +42,7 @@ Accept/decline, overwrite/resume, live progress, cancellation, inline text displ
 and history remain desktop features. Text arrives through a callback before
 upstream removes its temporary receive artifact; it is not printed to stdout.
 Existing settings and history paths do not change. The app's product version is
-still supplied by its release tag; Settings reports engine `v11.5.4`.
+still supplied by its release tag; Settings reports engine `v11.6.0`.
 
 ## Implementation and verification
 
@@ -67,7 +67,8 @@ text in both directions through a local relay and verify contents and text-file
 cleanup. CI builds the official CLI independently of the local Go replacement.
 
 References: [v11.0.0](https://github.com/schollz/croc/releases/tag/v11.0.0),
-[v11.5.4](https://github.com/schollz/croc/releases/tag/v11.5.4).
+[v11.5.4](https://github.com/schollz/croc/releases/tag/v11.5.4),
+[v11.6.0](https://github.com/schollz/croc/releases/tag/v11.6.0).
 
 ## Verification results (2026-09-27)
 

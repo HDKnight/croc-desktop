@@ -34,7 +34,7 @@ jobs:
       - name: Install unmodified croc CLI for interoperability tests
         env:
           GOBIN: ${{ runner.temp }}/croc-upstream
-        run: go install github.com/schollz/croc/v11@v11.5.4
+        run: go install github.com/schollz/croc/v11@v11.6.0
 
       # frontend/dist is embedded by the Go module (go:embed all:frontend/dist)
       - name: Build frontend

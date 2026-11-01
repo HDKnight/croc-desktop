@@ -17,7 +17,7 @@ import (
 func TestOfficialCLIInterop(t *testing.T) {
 	binary := os.Getenv("CROC_TEST_CLI")
 	if binary == "" {
-		t.Skip("set CROC_TEST_CLI to an upstream croc v11.5.4 binary")
+		t.Skip("set CROC_TEST_CLI to an upstream croc v11.6.0 binary")
 	}
 	for _, direction := range []string{"desktop-send", "desktop-receive"} {
 		for _, text := range []bool{false, true} {

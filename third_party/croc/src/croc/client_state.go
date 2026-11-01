@@ -158,6 +158,9 @@ func (c *Client) setProgressBar(bar *progressbar.ProgressBar) {
 }
 
 func (c *Client) addProgress(delta int64) {
+	if display := c.progressDisplaySnapshot(); display != nil {
+		display.advance("", 0, delta)
+	}
 	c.barMu.RLock()
 	bar := c.bar
 	c.barMu.RUnlock()
@@ -168,6 +171,9 @@ func (c *Client) addProgress(delta int64) {
 }
 
 func (c *Client) finishProgress() {
+	if display := c.progressDisplaySnapshot(); display != nil {
+		display.finishUnit()
+	}
 	c.barMu.RLock()
 	bar := c.bar
 	c.barMu.RUnlock()

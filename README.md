@@ -205,7 +205,7 @@ bottom-tab layout without a phone.
 
 ## croc engine compatibility
 
-This build uses **croc v11.5.4**. Both devices need croc v11; older desktop
+This build uses **croc v11.6.0**. Both devices need croc v11; older desktop
 versions using v10 must be upgraded. Codes now use three words, and text messages
 are limited to 1 MiB. See [migration behavior and verification](docs/croc-v11-migration.md)
 for details, including preserved relay/proxy routing.
