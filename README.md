@@ -113,7 +113,7 @@ irm https://raw.githubusercontent.com/HDKnight/croc-desktop/main/install.ps1 | i
 
 上游项目的 Homebrew cask（`sihanteng/tap`）安装的是 [SihanTeng/croc-desktop](https://github.com/SihanTeng/croc-desktop)，不是本仓库的构建。AUR 与 Fedora 也尚未提供本仓库的包。
 
-> 传输双方各自安装本应用或 [croc 命令行](https://github.com/schollz/croc) 即可。
+> 传输双方各自安装本应用或 [croc 命令行](https://github.com/schollz/croc) 即可。命令行需要 **v11**，安装方式见[怎么用](#how-to-use)。
 
 ## 移动端（iOS · Android） {#mobile}
 
@@ -157,6 +157,32 @@ wails3 task android:run                      # 模拟器或 adb 设备
 **界面预览：** 把桌面窗口拉到大约 360 像素宽，即可看到手机上的底部标签，不必真机。
 
 ## 怎么用 {#how-to-use}
+
+### 安装 croc 命令行
+
+对方只用命令行接收时，安装原版 [croc](https://github.com/schollz/croc) **v11**。装完新开终端，执行 `croc --version` 确认。系统软件源里的包可能仍是旧版。
+
+**Windows（PowerShell）：**
+
+```powershell
+winget install schollz.croc
+```
+
+也可以：`scoop install croc` 或 `choco install croc`。
+
+**macOS：**
+
+```bash
+brew install croc
+```
+
+**Linux / macOS：**
+
+```bash
+curl https://getcroc.com | bash
+```
+
+也可以从 [croc Releases](https://github.com/schollz/croc/releases/latest) 下载压缩包。自建中继的接收步骤见[自建中继操作说明](docs/自建中继.md)。
 
 ### 发送
 
