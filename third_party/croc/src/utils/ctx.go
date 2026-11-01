@@ -123,7 +123,7 @@ func HashFileCtx(ctx context.Context, fname string, algorithm string, showProgre
 
 	// Create progress bar based on algorithm
 	var bar *progressbar.ProgressBar
-	if shouldShowHashProgress(doShowProgress, fi.Size()) {
+	if showHashProgress(doShowProgress, fi.Size()) {
 		if algorithm == "imohash" || algorithm == "imohash-v2" {
 			bar = newFileProgress("Sampling", fname, -1)
 		} else {

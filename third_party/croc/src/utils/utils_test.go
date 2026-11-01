@@ -112,6 +112,23 @@ func TestShouldShowHashProgress(t *testing.T) {
 	}
 }
 
+func TestShowHashProgressRequiresTerminal(t *testing.T) {
+	stderr, err := os.CreateTemp(t.TempDir(), "stderr")
+	if err != nil {
+		t.Fatal(err)
+	}
+	original := os.Stderr
+	os.Stderr = stderr
+	t.Cleanup(func() {
+		os.Stderr = original
+		_ = stderr.Close()
+	})
+
+	if showHashProgress(true, minHashProgressSize) {
+		t.Fatal("hash progress must stay off when stderr is not a console")
+	}
+}
+
 func BenchmarkMD5(b *testing.B) {
 	bigFile()
 	b.ResetTimer()

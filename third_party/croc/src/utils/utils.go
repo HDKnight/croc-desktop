@@ -26,6 +26,7 @@ import (
 
 	"github.com/cespare/xxhash/v2"
 	"github.com/kalafut/imohash"
+	"github.com/mattn/go-isatty"
 	"github.com/minio/highwayhash"
 	"github.com/schollz/croc/v11/src/codephrase"
 	log "github.com/schollz/croc/v11/src/logger"
@@ -40,6 +41,20 @@ const minHashProgressSize int64 = 200 * 1024 * 1024
 
 func shouldShowHashProgress(requested bool, size int64) bool {
 	return requested && size >= minHashProgressSize
+}
+
+// stderrSupportsProgress reports whether a hash progress bar can be drawn.
+// A Windows GUI process has no console, so os.Stderr is the invalid handle
+// "/dev/stderr" and the first progress write fails the whole hash.
+func stderrSupportsProgress() bool {
+	fd := os.Stderr.Fd()
+	return isatty.IsTerminal(fd) || isatty.IsCygwinTerminal(fd)
+}
+
+// showHashProgress is the size gate plus a usable console. Large-file hashing
+// must succeed when there is nowhere to draw the bar.
+func showHashProgress(requested bool, size int64) bool {
+	return shouldShowHashProgress(requested, size) && stderrSupportsProgress()
 }
 
 func newFileProgress(action, fname string, size int64) *progressbar.ProgressBar {
@@ -206,7 +221,7 @@ func HashFile(fname string, algorithm string, showProgress ...bool) (hash256 []b
 		}
 		return []byte(SHA256(target)), nil
 	}
-	doShowProgress = shouldShowHashProgress(doShowProgress, fstats.Size())
+	doShowProgress = showHashProgress(doShowProgress, fstats.Size())
 	switch algorithm {
 	case "imohash":
 		return IMOHashFile(fname)
